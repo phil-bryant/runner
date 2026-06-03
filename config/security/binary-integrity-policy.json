@@ -1,0 +1,208 @@
+{
+  "binaries": [
+    {
+      "id": "python3",
+      "command": "python3",
+      "required": true,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": "3.11.0",
+      "allowed_sha256": []
+    },
+    {
+      "id": "psql",
+      "command": "psql",
+      "required": true,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": []
+    },
+    {
+      "id": "sqlcipher",
+      "command": "sqlcipher",
+      "required": true,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": []
+    },
+    {
+      "id": "op",
+      "command": "op",
+      "required": false,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": []
+    },
+    {
+      "id": "1psa",
+      "command": "1psa",
+      "required": true,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": [
+        "0cc7eac36c1232139fbd59c50944120046942cbe26eed11db83b0f7c4150414d"
+      ]
+    },
+    {
+      "id": "curl",
+      "command": "curl",
+      "required": true,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": []
+    },
+    {
+      "id": "openssl",
+      "command": "openssl",
+      "required": true,
+      "version_args": [
+        "version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,3})",
+      "min_version": null,
+      "allowed_sha256": []
+    },
+    {
+      "id": "git",
+      "command": "git",
+      "required": true,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": []
+    },
+    {
+      "id": "semgrep",
+      "command": "semgrep",
+      "required": false,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": []
+    },
+    {
+      "id": "bandit",
+      "command": "bandit",
+      "required": false,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": []
+    },
+    {
+      "id": "pip-audit",
+      "command": "pip-audit",
+      "required": false,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": []
+    },
+    {
+      "id": "detect-secrets",
+      "command": "detect-secrets",
+      "required": false,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": []
+    },
+    {
+      "id": "cosign",
+      "command": "cosign",
+      "required": false,
+      "version_args": [
+        "version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": [
+        "7247772720caf34bc9d83c5dfa18e402c3b32dde31c98bd33a3cc3a6779a3304"
+      ]
+    },
+    {
+      "id": "gitleaks",
+      "command": "gitleaks",
+      "required": false,
+      "version_args": [
+        "version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": [
+        "f414bc2fb952be6c9072b75cb411e3368614ef4b16d48dbd9ad238034afd2302"
+      ]
+    },
+    {
+      "id": "shellcheck",
+      "command": "shellcheck",
+      "required": false,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": []
+    },
+    {
+      "id": "swiftlint",
+      "command": "swiftlint",
+      "required": false,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": []
+    },
+    {
+      "id": "schemathesis",
+      "command": "schemathesis",
+      "required": false,
+      "version_args": [
+        "--version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": []
+    },
+    {
+      "id": "zap-cli",
+      "command": "/Applications/ZAP.app/Contents/MacOS/ZAP.sh",
+      "required": false,
+      "version_args": [
+        "-version"
+      ],
+      "version_pattern": "(\\d+(?:\\.\\d+){1,2})",
+      "min_version": null,
+      "allowed_sha256": []
+    }
+  ]
+}

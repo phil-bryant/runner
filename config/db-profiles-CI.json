@@ -1,0 +1,9 @@
+{
+  "default_profile": "sqlite",
+  "profiles": {
+    "sqlite": {
+      "1psa_or_env_item": "LOCALHOST_SQLITE_TELLER",
+      "sqlcipher_key_field": "sqlcipher_key"
+    }
+  }
+}
