@@ -203,7 +203,7 @@ if [ "$MUTATION_USE_SUBPROCESS" = "true" ]; then
     "$PYTHON_BIN" "$MUTMUT_DARWIN_DRIVER" prepare --max-children 1 > "$MUTMUT_OUTPUT" 2>&1
   PREPARE_EXIT=$?
   if [ "$PREPARE_EXIT" -eq 0 ]; then
-    export TELLER_PYTHON="$PYTHON_BIN"
+    export MUTATION_PYTHON="$PYTHON_BIN"
     run_with_timeout "$MUTATION_TIMEOUT_SECONDS" \
       "$PYTHON_BIN" "$MUTMUT_DARWIN_DRIVER" execute >> "$MUTMUT_OUTPUT" 2>&1
     MUTMUT_EXIT=$?
@@ -489,6 +489,29 @@ suspicious = int(data.get("suspicious", 0))
 segfault = int(data.get("segfault", 0))
 total = int(data.get("total", killed + survived + skipped + timed_out + no_tests + suspicious + segfault))
 
+#R060: Exclude curated, proven-equivalent mutants from the score (standard mutation-testing practice).
+#R060: Only the exact mutants listed in MUTATION_EQUIVALENTS_FILE are excluded; any other survivor still fails.
+import os as _os
+equivalent_names: set[str] = set()
+equivalents_file = _os.environ.get("MUTATION_EQUIVALENTS_FILE", "").strip()
+if equivalents_file and Path(equivalents_file).is_file():
+    for raw_line in Path(equivalents_file).read_text(encoding="utf-8").splitlines():
+        entry = raw_line.strip()
+        if entry and not entry.startswith("#"):
+            equivalent_names.add(entry.split()[0])
+equivalent = 0
+if equivalent_names and mutants_dir.is_dir():
+    for eq_meta_path in mutants_dir.glob("**/*.meta"):
+        try:
+            eq_meta = json.loads(eq_meta_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        for eq_name, eq_code in eq_meta.get("exit_code_by_key", {}).items():
+            if eq_code == 0 and eq_name in equivalent_names:
+                equivalent += 1
+survived = max(0, survived - equivalent)
+total = max(0, total - equivalent)
+
 by_module: dict[str, dict[str, int]] = {}
 if mutants_dir.is_dir():
     for meta_path in sorted(mutants_dir.glob("**/*.meta")):
@@ -545,6 +568,7 @@ summary = {
     "no_tests": no_tests,
     "suspicious": suspicious,
     "segfault": segfault,
+    "equivalent": equivalent,
     "not_checked": not_checked,
     "segfault_failed": segfault_failed,
     "incomplete_run": incomplete_run,
@@ -649,6 +673,8 @@ if survivor_budget_failed:
     )
 if gate_failed:
     raise SystemExit(1)
+if equivalent:
+    print(f"ℹ️  Excluded {equivalent} proven-equivalent mutant(s) from scoring (MUTATION_EQUIVALENTS_FILE).")
 print(
     f"✅ PASS: Mutation score {score:.2f}% (threshold {score_threshold}%), "
     f"mutator coverage {mutator_coverage:.2f}% (threshold {coverage_threshold}%)."

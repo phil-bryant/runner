@@ -1,1 +1,3 @@
 /artifacts/
+runner-venv/
+src/scripts/__pycache__/

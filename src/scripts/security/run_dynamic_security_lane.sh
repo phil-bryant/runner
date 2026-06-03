@@ -306,14 +306,19 @@ summarize_zap_html_report() {
 }
 
 read_classifier_write_token() {
-  # Resolve DAST write token from env when present, else 1psa.
+  # Resolve DAST write token from env when present, else 1psa. Apps without write-token auth
+  # (DAST_REQUIRE_WRITE_TOKEN=false) use a benign placeholder header instead of requiring a secret.
   local write_token="${TELLER_CLASSIFIER_WRITE_TOKEN:-}"
-  if [[ -z "$write_token" ]]; then
+  if [[ -z "$write_token" && "${DAST_REQUIRE_WRITE_TOKEN:-true}" == "true" ]]; then
     write_token="$(rb_read_1psa_item "$WRITE_TOKEN_PSA_ITEM")"
   fi
   if [[ -z "$write_token" ]]; then
-    echo "❌ Failed to read classifier write token from 1psa item: ${WRITE_TOKEN_PSA_ITEM}"
-    exit 1
+    if [[ "${DAST_REQUIRE_WRITE_TOKEN:-true}" != "true" ]]; then
+      write_token="dast-unauthenticated"
+    else
+      echo "❌ Failed to read classifier write token from 1psa item: ${WRITE_TOKEN_PSA_ITEM}"
+      exit 1
+    fi
   fi
   printf '%s' "$write_token"
 }

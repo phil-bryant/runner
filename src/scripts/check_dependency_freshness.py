@@ -121,7 +121,12 @@ def run_outdated_list() -> list[dict[str, Any]]:
         raise RuntimeError(f"Could not parse pip output: {exc}") from exc
     if not isinstance(parsed, list):
         raise RuntimeError("Unexpected pip output format for outdated package list")
-    return [item for item in parsed if isinstance(item, dict)]
+    # Editable/local source projects (the repo itself and editable siblings) are not third-party
+    # dependencies; their "latest_version" reflects an unrelated PyPI name and is not freshness-relevant.
+    return [
+        item for item in parsed
+        if isinstance(item, dict) and not str(item.get("editable_project_location", "")).strip()
+    ]
 
 
 def _collect_reverse_dependency_constraints() -> dict[str, list[dict[str, str]]]:
