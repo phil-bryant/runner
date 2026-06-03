@@ -9,8 +9,16 @@ import os
 import subprocess
 import sys
 import time
+import tomllib
 from datetime import datetime
 from pathlib import Path
+
+# Install the setproctitle stub before mutmut is imported anywhere (Darwin fork+setproctitle crash, mutmut #446).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    import mutmut_darwin_stub  # noqa: F401
+except ModuleNotFoundError:
+    pass
 
 
 def _purge_pycache_under(mutants_root: Path) -> None:
@@ -18,15 +26,18 @@ def _purge_pycache_under(mutants_root: Path) -> None:
     for cache_dir in mutants_root.rglob("__pycache__"):
         if not cache_dir.is_dir():
             continue
-        trash = Path.home() / ".Trash" / f"teller_pycache_{stamp}_{cache_dir.parent.name}"
+        trash = Path.home() / ".Trash" / f"mutants_pycache_{stamp}_{cache_dir.parent.name}"
         trash.parent.mkdir(parents=True, exist_ok=True)
         if trash.exists():
-            trash = Path.home() / ".Trash" / f"teller_pycache_{stamp}_{cache_dir.parent.name}_{os.getpid()}"
+            trash = Path.home() / ".Trash" / f"mutants_pycache_{stamp}_{cache_dir.parent.name}_{os.getpid()}"
         os.rename(cache_dir, trash)
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    # Operate on the target repo (RUNBOOK_REPO_ROOT), not the runner directory that hosts this golden.
+    env_root = os.environ.get("RUNBOOK_REPO_ROOT")
+    root = Path(env_root).resolve() if env_root else Path(__file__).resolve().parent.parent
+    return root
 
 
 def _prepare(root: Path, max_children: int) -> int:
@@ -42,6 +53,8 @@ def _prepare(root: Path, max_children: int) -> int:
         ensure_config_loaded,
         makedirs,
         run_forced_fail_test,
+        setup_source_paths,
+        store_lines_covered_by_tests,
         tests_for_mutant_names,
     )
     from pathlib import Path as PPath
@@ -53,9 +66,14 @@ def _prepare(root: Path, max_children: int) -> int:
         copy_src_dir()
         copy_also_copy_files()
         _purge_pycache_under(PPath("mutants"))
+        # Build per-test coverage so each mutant runs only its covering tests (keeps verdicts precise
+        # and avoids loading unrelated plugins/fixtures during mutant execution).
+        setup_source_paths()
+        store_lines_covered_by_tests()
         stats = create_mutants(max_children)
         sys.path[:] = path_before_pool
         _purge_pycache_under(PPath("mutants"))
+        setup_source_paths()
     print(
         f"    done ({stats.mutated} files mutated, {stats.ignored} ignored, {stats.unmodified} unmodified)"
     )
@@ -89,19 +107,71 @@ def _tests_for_mutant(stats: dict, mutant_name: str) -> list[str]:
     return sorted(tests, key=lambda name: durations.get(name, 0.0))
 
 
+def _full_suite_tests(root: Path) -> list[str]:
+    # Coverage-selected tests can miss mutations on def/signature lines (e.g. default-argument values).
+    # Escalating to mutmut's configured tests_dir keeps reruns bounded to mutation-relevant tests.
+    pyproject = root / "pyproject.toml"
+    configured: list[str] = []
+    if pyproject.is_file():
+        try:
+            payload = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+            tests_dir = payload.get("tool", {}).get("mutmut", {}).get("tests_dir", [])
+            if isinstance(tests_dir, str):
+                tests_dir = [tests_dir]
+            if isinstance(tests_dir, list):
+                for candidate in tests_dir:
+                    if not isinstance(candidate, str):
+                        continue
+                    test_path = (root / candidate).resolve()
+                    if test_path.exists():
+                        configured.append(str(test_path))
+        except (OSError, tomllib.TOMLDecodeError):
+            configured = []
+    if configured:
+        return configured
+    py_dir = root / "tests" / "py"
+    return [str(py_dir)] if py_dir.is_dir() else []
+
+
 def _run_mutant_pytest(python: Path, root: Path, mutant_name: str, tests: list[str]) -> int:
-    venv = root / "teller-venv"
+    # Derive the venv from the resolved interpreter (venv/bin/python3) so the driver is repo-agnostic.
+    venv = python.parent.parent
     env = os.environ.copy()
     env["MUTANT_UNDER_TEST"] = mutant_name
-    env["PYTHONPATH"] = f"{root / 'mutants'}:{root}"
+    mutants_src = root / "mutants" / "src"
+    repo_src = root / "src"
+    if mutants_src.is_dir():
+        pythonpath_parts = [mutants_src]
+        if repo_src.is_dir():
+            pythonpath_parts.append(repo_src)
+        pythonpath_parts.append(root)
+    else:
+        pythonpath_parts = [root / "mutants"]
+        if repo_src.is_dir():
+            pythonpath_parts.append(repo_src)
+        pythonpath_parts.append(root)
+    env["PYTHONPATH"] = os.pathsep.join(str(item) for item in pythonpath_parts)
+    env["MUTATION_IMPORT_PREPEND"] = os.pathsep.join(str(item) for item in pythonpath_parts)
     env["VIRTUAL_ENV"] = str(venv)
     env["PATH"] = f"{venv / 'bin'}:{env.get('PATH', '')}"
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env.setdefault("HYPOTHESIS_STORAGE_DIRECTORY", str(root / "artifacts/cache/hypothesis"))
+    pytest_runner = (
+        "import os\n"
+        "import sys\n"
+        "import pytest\n"
+        "prepend = os.environ.get('MUTATION_IMPORT_PREPEND', '')\n"
+        "parts = [path for path in prepend.split(os.pathsep) if path]\n"
+        "for path in reversed(parts):\n"
+        "    if path in sys.path:\n"
+        "        sys.path.remove(path)\n"
+        "    sys.path.insert(0, path)\n"
+        "raise SystemExit(pytest.main(sys.argv[1:]))\n"
+    )
     pytest_args = [
         str(python),
-        "-m",
-        "pytest",
+        "-c",
+        pytest_runner,
         "-x",
         "-q",
         "-p",
@@ -114,7 +184,7 @@ def _run_mutant_pytest(python: Path, root: Path, mutant_name: str, tests: list[s
         str(root),
         "--tb=no",
     ] + tests
-    proc = subprocess.run(pytest_args, cwd=root / "mutants", env=env)
+    proc = subprocess.run(pytest_args, cwd=root, env=env)
     return int(proc.returncode)
 
 
@@ -145,6 +215,10 @@ def _run_and_record_mutant(
         return False
     start = time.monotonic()
     exit_code = _run_mutant_pytest(python, root, mutant_name, tests)
+    if exit_code == 0:
+        full_suite = _full_suite_tests(root)
+        if full_suite:
+            exit_code = _run_mutant_pytest(python, root, mutant_name, full_suite)
     meta.exit_code_by_key[mutant_name] = exit_code
     meta.durations_by_key[mutant_name] = time.monotonic() - start
     meta.save()
@@ -205,7 +279,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-children", type=int, default=1)
     args = parser.parse_args(argv)
     root = _repo_root()
-    python = Path(os.environ.get("TELLER_PYTHON", root / "teller-venv/bin/python3"))
+    default_python = os.environ.get("MUTATION_PYTHON") or os.environ.get("TELLER_PYTHON") or str(root / "teller-venv/bin/python3")
+    python = Path(default_python)
     if not python.is_absolute():
         python = (root / python).resolve()
     else:

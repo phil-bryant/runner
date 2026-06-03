@@ -17,7 +17,11 @@ setup() {
 
 @test "driver configures a deterministic subprocess pytest environment" {
   #R005-T01
+  grep -q "root / \"mutants\" / \"src\"" "$SRC"
   grep -q "PYTHONPATH" "$SRC"
+  grep -q "MUTATION_IMPORT_PREPEND" "$SRC"
+  grep -q "pytest.main(sys.argv\\[1:\\])" "$SRC"
+  grep -q "cwd=root" "$SRC"
 }
 
 @test "stub module installs a callable setproctitle symbol" {
