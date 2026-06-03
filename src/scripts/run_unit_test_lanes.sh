@@ -264,6 +264,7 @@ fi
 #R015: Propagate python-suite failures.
 if [[ "$RUN_PYTHON_TESTS" == "true" ]]; then
   echo "▶ Running Python unit tests (pytest)..."
+  PYTEST_DIR="${PYTEST_DIR:-tests/py}"
   UNITTEST_PYTHON="python3"
   if [[ -n "${PYTHONPATH:-}" ]]; then
     UNITTEST_PYTHONPATH="./src:${PYTHONPATH}"
@@ -288,7 +289,7 @@ PY
       fi
     fi
   fi
-  PYTHONPATH="$UNITTEST_PYTHONPATH" "$UNITTEST_PYTHON" -m pytest tests/py -q
+  PYTHONPATH="$UNITTEST_PYTHONPATH" "$UNITTEST_PYTHON" -m pytest "$PYTEST_DIR" -q
 fi
 
 #R025: Run pgTAP SQL unit tests.

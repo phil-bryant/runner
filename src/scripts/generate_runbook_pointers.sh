@@ -2,7 +2,7 @@
 umask 007
 set -euo pipefail
 
-# Generates the thin rNN_/rtNN_ pointer scripts in each repo. Each pointer sets
+# Generates the thin pointer scripts in each repo. Each pointer sets
 # RUNBOOK_REPO_ROOT, sources its repo profile, and execs the genericized runner golden.
 # Idempotent: rewrites pointer files deterministically. Run from anywhere.
 
@@ -20,6 +20,24 @@ umask 007
 set -euo pipefail
 SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 RUNNER_HOME="\$(cd "\${SCRIPT_DIR}/../runner" && pwd)"
+export RUNBOOK_REPO_ROOT="\$SCRIPT_DIR"
+# shellcheck source=/dev/null
+source "\${RUNNER_HOME}/config/runbook/${profile}.env"
+exec "\${RUNNER_HOME}/${golden_rel}" "\$@"
+EOF
+  chmod 770 "$out"
+}
+
+emit_eggnest_workspace_pointer() {
+  local profile="$1" pointer="$2" golden_rel="$3"
+  local out="${EGGNEST_ROOT}/${pointer}"
+  cat > "$out" <<EOF
+#!/usr/bin/env bash
+# Eggnest workspace pointer: RUNBOOK_REPO_ROOT is the eggnest repo root; execs runner golden.
+umask 007
+set -euo pipefail
+SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+RUNNER_HOME="\$(cd "\${SCRIPT_DIR}/runner" && pwd)"
 export RUNBOOK_REPO_ROOT="\$SCRIPT_DIR"
 # shellcheck source=/dev/null
 source "\${RUNNER_HOME}/config/runbook/${profile}.env"
@@ -66,37 +84,50 @@ for t in t00_run_code_quality_tests t01_run_av_test t02_run_dependency_freshness
   t08_run_python_unit_tests t09_run_mutation_tests t11_run_fuzz_tests \
   t12_run_dynamic_security_tests t13_run_teller_api_smoke_tests \
   t17_run_teller_live_canary_test t18_verify_filevault_encryption_test; do
-  emit_test_pointer teller teller "r${t}.sh" "${t}.sh"
+  emit_test_pointer teller teller "${t}.sh" "${t}.sh"
 done
 
 # --- classy ---
 # classy pointers are hand-curated with a renumbered NN_ scheme (e.g. 03_load_requirements,
 # 07_run_classification_macos_ui, 08_run_all_tests_parallel) and tests/tNN_*.sh; not generated here.
 
-# --- matchy (SAST/Python checks) ---
-emit_root_pointer matchy matchy r00_verify_requirements_traceability.sh 00_verify_requirements_traceability.sh
-emit_root_pointer matchy matchy r01_install_prerequisites.sh 01_install_prerequisites.sh
-emit_root_pointer matchy matchy r02_create_venv.sh 02_create_venv.sh
-emit_root_pointer matchy matchy r03_load_requirements.sh src/scripts/load_requirements_generic.sh
-emit_root_pointer matchy matchy r04_run_dependency_freshness_checks.sh 04_run_dependency_freshness_checks.sh
-emit_root_pointer matchy matchy r05_run_unit_tests.sh 05_run_unit_tests.sh
-emit_root_pointer matchy matchy r06_run_security_checks.sh 06_run_security_checks.sh
-emit_root_pointer matchy matchy r07_run_av_checks.sh 07_run_av_checks.sh
-emit_root_pointer matchy matchy r10_run_mutation_tests.sh 10_run_mutation_tests.sh
-emit_root_pointer matchy matchy r11_run_fuzz.sh 11_run_fuzz.sh
-emit_root_pointer matchy matchy r12_run_all_checks_parallel.sh 12_run_all_checks_parallel.sh
+# --- matchy (SAST/Python checks; numbered NN_ pointers, no r prefix) ---
+emit_root_pointer matchy matchy 00_verify_requirements_traceability.sh 00_verify_requirements_traceability.sh
+emit_root_pointer matchy matchy 01_install_prerequisites.sh 01_install_prerequisites.sh
+emit_root_pointer matchy matchy 02_create_venv.sh 02_create_venv.sh
+emit_root_pointer matchy matchy 03_load_requirements.sh src/scripts/load_requirements_generic.sh
+emit_root_pointer matchy matchy 04_run_dependency_freshness_checks.sh 04_run_dependency_freshness_checks.sh
+emit_root_pointer matchy matchy 05_run_unit_tests.sh 05_run_unit_tests.sh
+emit_root_pointer matchy matchy 06_run_security_checks.sh 06_run_security_checks.sh
+emit_root_pointer matchy matchy 07_run_av_checks.sh 07_run_av_checks.sh
+emit_root_pointer matchy matchy 10_run_mutation_tests.sh 10_run_mutation_tests.sh
+emit_root_pointer matchy matchy 11_run_fuzz.sh 11_run_fuzz.sh
+emit_root_pointer matchy matchy 12_run_all_checks_parallel.sh 11_run_all_tests_parallel.sh
+for t in t00_run_code_quality_tests t01_run_av_test t02_run_dependency_freshness_tests \
+  t03_run_static_security_tests t04_run_requirements_traceability_tests \
+  t07_run_shell_unit_tests t08_run_python_unit_tests t09_run_mutation_tests \
+  t11_run_fuzz_tests t12_run_dynamic_security_tests t18_verify_filevault_encryption_test; do
+  emit_test_pointer matchy matchy "${t}.sh" "${t}.sh"
+done
 
-# --- mailcart (Swift app + Outlook Graph) ---
-emit_root_pointer mailcart mailcart r00_verify_requirements_traceability.sh 00_verify_requirements_traceability.sh
-emit_root_pointer mailcart mailcart r01_install_prerequisites.sh 01_install_prerequisites.sh
-emit_root_pointer mailcart mailcart r02_create_venv.sh 02_create_venv.sh
-emit_root_pointer mailcart mailcart r03_load_requirements.sh src/scripts/load_requirements_generic.sh
-emit_root_pointer mailcart mailcart r04_run_dependency_freshness_checks.sh 04_run_dependency_freshness_checks.sh
-emit_root_pointer mailcart mailcart r05_install_matchy_api_tls.sh 05_install_matchy_api_tls.sh
+# --- mailcart (Swift app + Outlook Graph; numbered NN_ pointers, no r prefix) ---
+emit_root_pointer mailcart mailcart 00_verify_requirements_traceability.sh 00_verify_requirements_traceability.sh
+emit_root_pointer mailcart mailcart 01_install_prerequisites.sh 01_install_prerequisites.sh
+emit_root_pointer mailcart mailcart 02_create_venv.sh 02_create_venv.sh
+emit_root_pointer mailcart mailcart 03_load_requirements.sh src/scripts/load_requirements_generic.sh
+emit_root_pointer mailcart mailcart 04_run_dependency_freshness_checks.sh 04_run_dependency_freshness_checks.sh
+emit_root_pointer mailcart mailcart 05_install_matchy_api_tls.sh 05_install_matchy_api_tls.sh
+emit_root_pointer mailcart mailcart 11_run_all_tests_parallel.sh 11_run_all_tests_parallel.sh
+for t in t00_run_code_quality_tests t01_run_av_test t02_run_dependency_freshness_tests \
+  t03_run_static_security_tests t04_run_requirements_traceability_tests \
+  t07_run_shell_unit_tests t08_run_python_unit_tests \
+  t18_verify_filevault_encryption_test; do
+  emit_test_pointer mailcart mailcart "${t}.sh" "${t}.sh"
+done
 
-# --- e2e (cross-repo verification) ---
-emit_root_pointer e2e e2e r02_create_venv.sh 02_create_venv.sh
-emit_root_pointer e2e e2e r03_load_requirements.sh src/scripts/load_requirements_generic.sh
-emit_root_pointer e2e e2e r05_run_e2e_tests.sh 05_run_e2e_tests.sh
+# --- eggnest workspace (cross-repo engine-level matching e2e; pointers at repo root) ---
+emit_eggnest_workspace_pointer eggnest r02_create_venv.sh 02_create_venv.sh
+emit_eggnest_workspace_pointer eggnest r03_load_requirements.sh src/scripts/load_requirements_generic.sh
+emit_eggnest_workspace_pointer eggnest r05_run_e2e_tests.sh 05_run_e2e_tests.sh
 
-echo "✅ Generated runbook pointers under: ${EGGNEST_ROOT}/{teller,classy,matchy,mailcart,e2e}"
+echo "✅ Generated runbook pointers under: ${EGGNEST_ROOT}/{teller,classy,matchy,mailcart} and eggnest workspace root"

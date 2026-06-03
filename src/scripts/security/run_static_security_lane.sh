@@ -443,7 +443,7 @@ run_ruff_sast() {
   ruff check \
     --output-format json \
     --force-exclude \
-    --exclude "${VENV_NAME},.venv,mutants,artifacts,.pytest_cache,.ruff_cache" \
+    --exclude "${VENV_NAME},.venv,mutants,artifacts,.pytest_cache,.ruff_cache,deprecated" \
     . > "$ruff_report"
   RUFF_EXIT=$?
   set -e
