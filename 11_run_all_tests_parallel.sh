@@ -250,6 +250,11 @@ trap 'if [[ "$cleanup_finished" != "true" ]]; then cleanup_finished=true; finish
 trap 'signal_exit_code=130' INT
 trap 'signal_exit_code=143' TERM
 acquire_single_run_lock
+DB_LANE_LOCK_DIR="${SCRIPT_DIR}/.parallel-db-tests.lock"
+if [[ -d "$DB_LANE_LOCK_DIR" ]]; then
+  echo "ℹ️  Removing stale DB lane lock: ${DB_LANE_LOCK_DIR}"
+  safe_move_to_trash "$DB_LANE_LOCK_DIR"
+fi
 
 render_progress() {
   local completed="$1"
@@ -292,6 +297,10 @@ derive_failure_reason() {
   fi
   if grep -q "Timed out waiting for macOS UI SwiftPM lock" "$log_file"; then
     echo "lock-timeout"
+    return
+  fi
+  if grep -q "timed out waiting for DB lane lock" "$log_file"; then
+    echo "db-lock-timeout"
     return
   fi
   if grep -q "Timed out after .* while running" "$log_file"; then
@@ -341,7 +350,7 @@ run_lane_worker() {
   local lane_dast_reuse_api="${PARALLEL_DAST_REUSE_EXISTING_API:-false}"
   local lane_dast_db_profile="${PARALLEL_DAST_DB_PROFILE:-${TELLER_DB_PROFILE:-}}"
   local crash_check_delay="${PARALLEL_CRASH_CHECK_DELAY_SECONDS:-0}"
-  local db_lock_dir="${SCRIPT_DIR}/.parallel-db-tests.lock"
+  local db_lock_dir="${DB_LANE_LOCK_DIR:-${SCRIPT_DIR}/.parallel-db-tests.lock}"
   local exit_code=0
   if [[ "$script" == "t15_verify_macos_crash_test.sh" && "$crash_check_delay" =~ ^[0-9]+$ && "$crash_check_delay" -gt 0 ]]; then
     sleep "$crash_check_delay"
@@ -371,11 +380,22 @@ run_lane_worker() {
   }
 
   if [[ "$script" == "t05_deploy_database_verification_test.sh" || "$script" == "t06_run_sql_unit_tests.sh" || "$script" == "t16_classification_persistence_verification_test.sh" || "$script" == "t12_run_dynamic_security_tests.sh" ]]; then
+    local lock_wait_timeout="${PARALLEL_DB_LOCK_WAIT_TIMEOUT_SECONDS:-180}"
+    local lock_wait_start="$(date +%s)"
+    local now_epoch=0
     while ! mkdir "$db_lock_dir" 2>/dev/null; do
+      now_epoch="$(date +%s)"
+      if (( now_epoch - lock_wait_start >= lock_wait_timeout )); then
+        printf '%s\n' "❌ FAIL: timed out waiting for DB lane lock (${lock_wait_timeout}s)." >"$log"
+        exit_code=1
+        break
+      fi
       sleep 1
     done
-    run_lane
-    exit_code=$?
+    if [[ "$exit_code" -eq 0 ]]; then
+      run_lane
+      exit_code=$?
+    fi
     rmdir "$db_lock_dir" 2>/dev/null || true
   else
     run_lane

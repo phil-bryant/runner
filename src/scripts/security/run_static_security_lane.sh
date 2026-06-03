@@ -58,6 +58,7 @@ if [[ -z "${SUPPLY_CHAIN_SIGNING_MODE:-}" ]]; then
   fi
 fi
 WRITE_TOKEN_PSA_ITEM="${WRITE_TOKEN_PSA_ITEM:-TELLER_CLASSIFIER_WRITE_TOKEN}"
+WRITE_TOKEN_HEADER_NAME="${WRITE_TOKEN_HEADER_NAME:-X-Teller-Write-Token}"
 
 mkdir -p "$REPORT_DIR"
 
@@ -546,7 +547,8 @@ run_dast_checks() (
     local source_base_url="$2"
     local output_schema_path="$3"
     local write_token="$4"
-    python3 "./tests/py/security/schemathesis_fixture_prep.py"       "$source_openapi_url"       "$source_base_url"       "$output_schema_path"       "$write_token"       ""       "${DAST_RUN_ID:-unknown}"
+    local write_token_header_name="$5"
+    python3 "./tests/py/security/schemathesis_fixture_prep.py"       "$source_openapi_url"       "$source_base_url"       "$output_schema_path"       "$write_token"       "$write_token_header_name"       ""       "${DAST_RUN_ID:-unknown}"
   }
 
   run_delete_category_contract_check() {
@@ -554,7 +556,8 @@ run_dast_checks() (
     local source_base_url="$2"
     local output_json_path="$3"
     local write_token="$4"
-    python3 "./tests/py/security/delete_category_contract_check.py"       "$schema_path"       "$source_base_url"       "$output_json_path"       "$write_token"       "${DAST_RUN_ID:-unknown}"
+    local write_token_header_name="$5"
+    python3 "./tests/py/security/delete_category_contract_check.py"       "$schema_path"       "$source_base_url"       "$output_json_path"       "$write_token"       "$write_token_header_name"       "${DAST_RUN_ID:-unknown}"
   }
 
   local report_dir="$1"
@@ -626,7 +629,7 @@ run_dast_checks() (
     echo "▶ Running Schemathesis against ${openapi_url}"
     local schemathesis_location="$openapi_url"
     local schemathesis_openapi_fixture="${report_dir_abs}/schemathesis-openapi.json"
-    if prepare_schemathesis_openapi_fixture "$openapi_url" "$base_url" "$schemathesis_openapi_fixture" "$dast_write_token" \
+    if prepare_schemathesis_openapi_fixture "$openapi_url" "$base_url" "$schemathesis_openapi_fixture" "$dast_write_token" "$WRITE_TOKEN_HEADER_NAME" \
       > "${report_dir_abs}/schemathesis-fixture.json"; then
       schemathesis_location="$schemathesis_openapi_fixture"
       echo "▶ Schemathesis fixture prepared at ${schemathesis_location}"
@@ -639,6 +642,7 @@ run_dast_checks() (
       "$base_url" \
       "${report_dir_abs}/schemathesis-delete-category-contract.json" \
       "$dast_write_token" \
+      "$WRITE_TOKEN_HEADER_NAME" \
       | tee "${report_dir_abs}/schemathesis-delete-category-contract.log"
     #R100: Write raw output temporarily, then persist only token-redacted artifacts.
     local schemathesis_raw_log="${report_dir_abs}/schemathesis-raw.log"
@@ -647,7 +651,7 @@ run_dast_checks() (
       cd "$report_dir_abs"
       schemathesis run "$schemathesis_location" \
         --url "$base_url" \
-        --header "X-Teller-Write-Token: ${dast_write_token}" \
+        --header "${WRITE_TOKEN_HEADER_NAME}: ${dast_write_token}" \
         --mode positive \
         --seed "$schemathesis_seed" \
         --max-examples "$schemathesis_max_examples" \

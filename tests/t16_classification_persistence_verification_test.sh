@@ -95,12 +95,12 @@ fi
 
 #R015: Resolve DB password from env or 1psa fallback.
 if [[ -z "$DB_PASSWORD" ]]; then
-  DB_PASSWORD="$(1psa -p "${TELLER_PSA_ITEM:-${PG_ONEPSA_ITEM:-localhost_postgres_teller}}")"
+  DB_PASSWORD="$(rb_read_1psa_item "${TELLER_PSA_ITEM:-${PG_ONEPSA_ITEM:-localhost_postgres_teller}}")"
 fi
 WRITE_TOKEN="${CLASSY_WRITE_TOKEN:-}"
 #R035: Resolve classifier write token from env when provided, otherwise use 1psa.
 if [[ -z "$WRITE_TOKEN" ]]; then
-  WRITE_TOKEN="$(1psa -p CLASSY_WRITE_TOKEN)"
+  WRITE_TOKEN="$(rb_read_1psa_item CLASSY_WRITE_TOKEN)"
 fi
 if [[ -z "$WRITE_TOKEN" ]]; then
   echo "Failed to read classifier write token from 1psa item: CLASSY_WRITE_TOKEN" >&2
@@ -111,6 +111,7 @@ CLASSIFICATION_PERSISTENCE_START_API="${CLASSIFICATION_PERSISTENCE_START_API:-tr
 CLASSIFICATION_PERSISTENCE_API_PYTHON="${CLASSIFICATION_PERSISTENCE_API_PYTHON:-./teller-venv/bin/python}"
 CLASSIFICATION_PERSISTENCE_API_STARTUP_SECONDS="${CLASSIFICATION_PERSISTENCE_API_STARTUP_SECONDS:-45}"
 CLASSIFICATION_PERSISTENCE_REPORT_DIR="${CLASSIFICATION_PERSISTENCE_REPORT_DIR:-./artifacts/classification-persistence}"
+CLASSIFICATION_PERSISTENCE_APP_SCRIPT="${CLASSIFICATION_PERSISTENCE_APP_SCRIPT:-${DAST_APP_SCRIPT:-09_run_classification_api.py}}"
 classifier_api_pid=""
 classifier_api_started="false"
 classifier_api_log=""
@@ -147,6 +148,7 @@ PY
 wait_for_classifier_api() {
   local url="$1"
   local timeout_seconds="$2"
+  local watch_pid="${3:-}"
   local curl_insecure_flag=""
   if [[ "$API_SCHEME" == "https" ]]; then
     curl_insecure_flag="-k"
@@ -154,6 +156,10 @@ wait_for_classifier_api() {
   local start_ts
   start_ts="$(date +%s)"
   while true; do
+    if [[ -n "$watch_pid" ]] && ! kill -0 "$watch_pid" 2>/dev/null; then
+      echo "❌ FAIL: classifier API process exited before ${url} became ready" >&2
+      return 1
+    fi
     if curl ${curl_insecure_flag:+"$curl_insecure_flag"} -fsS "$url" >/dev/null 2>&1; then
       return 0
     fi
@@ -180,6 +186,11 @@ ensure_classifier_api() {
   fi
   if [[ ! -x "$CLASSIFICATION_PERSISTENCE_API_PYTHON" ]]; then
     CLASSIFICATION_PERSISTENCE_API_PYTHON="python3"
+  fi
+  if [[ ! -f "./${CLASSIFICATION_PERSISTENCE_APP_SCRIPT}" ]]; then
+    echo "❌ FAIL: classification API script not found: ./${CLASSIFICATION_PERSISTENCE_APP_SCRIPT}" >&2
+    echo "Set CLASSIFICATION_PERSISTENCE_APP_SCRIPT or DAST_APP_SCRIPT to the runbook entrypoint." >&2
+    exit 1
   fi
   local api_host api_port
   api_host="$(python3 - <<'PY' "$API_URL"
@@ -227,10 +238,10 @@ PY
   classifier_api_log="${CLASSIFICATION_PERSISTENCE_REPORT_DIR}/classification-api-startup.log"
   echo "  classifier startup log: ${classifier_api_log}"
   CLASSY_API_HOST="$api_host" CLASSY_API_PORT="$api_port" \
-    "$CLASSIFICATION_PERSISTENCE_API_PYTHON" "./09_run_classification_api.py" >"$classifier_api_log" 2>&1 &
+    "$CLASSIFICATION_PERSISTENCE_API_PYTHON" "./${CLASSIFICATION_PERSISTENCE_APP_SCRIPT}" >"$classifier_api_log" 2>&1 &
   classifier_api_pid="$!"
   classifier_api_started="true"
-  if ! wait_for_classifier_api "$health_url" "$CLASSIFICATION_PERSISTENCE_API_STARTUP_SECONDS"; then
+  if ! wait_for_classifier_api "$health_url" "$CLASSIFICATION_PERSISTENCE_API_STARTUP_SECONDS" "$classifier_api_pid"; then
     echo "❌ FAIL: classification API failed to become ready at ${API_URL}" >&2
     if [[ -n "$classifier_api_log" ]]; then
       echo "Classifier startup log: ${classifier_api_log}" >&2

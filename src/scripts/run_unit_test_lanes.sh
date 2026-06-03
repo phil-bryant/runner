@@ -26,6 +26,13 @@ MACOS_UI_SWIFT_LOCK_TIMEOUT_SECONDS="${MACOS_UI_SWIFT_LOCK_TIMEOUT_SECONDS:-600}
 BATS_FILTER="${BATS_FILTER:-}"
 SQL_TESTS_DIR="${SQL_TESTS_DIR:-}"
 
+if [[ "$RUN_SQL_TESTS" == "true" && -z "$SQL_TESTS_DIR" ]]; then
+  if [[ ! -d "./tests/sql" && ! -d "./tests/sql/sqlite" ]]; then
+    echo "ℹ️  Skipping SQL unit tests: ./tests/sql and ./tests/sql/sqlite not found."
+    RUN_SQL_TESTS="false"
+  fi
+fi
+
 #R025: Resolve DB connection settings from the active profile (1psa+~/.env via the helper).
 DB_PROFILE_HELPER="${RUNNER_HOME}/src/scripts/db_profile_export.sh"
 PG_HOST=""
@@ -335,11 +342,7 @@ SQL
       exit 1
     fi
     if [[ -z "$DB_PASSWORD" ]]; then
-      if ! command -v 1psa >/dev/null 2>&1; then
-        echo "❌ TELLER_DB_PASSWORD is unset and 1psa is unavailable for fallback lookup."
-        exit 1
-      fi
-      DB_PASSWORD="$(1psa -p "${TELLER_PSA_ITEM:-${PG_ONEPSA_ITEM:-localhost_postgres_teller}}")"
+      DB_PASSWORD="$(rb_read_1psa_item "${TELLER_PSA_ITEM:-${PG_ONEPSA_ITEM:-localhost_postgres_teller}}")"
     fi
     if [[ -z "$DB_PASSWORD" ]]; then
       echo "❌ failed to resolve teller DB password for SQL unit tests."
@@ -349,8 +352,8 @@ SQL
     # objects require elevated privileges. Prefer postgres role when available.
     if [[ "${SQL_TESTS_USE_ADMIN_ROLE:-true}" == "true" && "$DB_USER" != "postgres" ]]; then
       admin_password="${POSTGRES_ADMIN_PASSWORD:-}"
-      if [[ -z "$admin_password" ]] && command -v 1psa >/dev/null 2>&1; then
-        admin_password="$(1psa -p "${POSTGRES_PSA_ITEM:-localhost_postgres_postgres}" 2>/dev/null || true)"
+      if [[ -z "$admin_password" ]]; then
+        admin_password="$(rb_read_1psa_item "${POSTGRES_PSA_ITEM:-localhost_postgres_postgres}" 2>/dev/null || true)"
       fi
       if [[ -n "$admin_password" ]]; then
         echo "ℹ️  Using postgres admin role for pgTAP execution."

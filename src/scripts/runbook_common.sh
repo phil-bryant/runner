@@ -87,3 +87,45 @@ rb_repo_python() {
   fi
   command -v python3
 }
+
+#R040: Resolve 1psa items with a bounded timeout to prevent stuck prompts.
+rb_read_1psa_item() {
+  local item="$1"
+  local timeout_seconds="${RB_ONEPSA_TIMEOUT_SECONDS:-12}"
+  local output=""
+  local exit_code=0
+  if ! command -v 1psa >/dev/null 2>&1; then
+    rb_err "1psa is required to resolve item: ${item}"
+    return 1
+  fi
+  set +e
+  output="$(python3 - <<'PY' "$item" "$timeout_seconds"
+import subprocess
+import sys
+
+item = sys.argv[1]
+timeout_seconds = int(sys.argv[2])
+try:
+    result = subprocess.run(["1psa", "-p", item], check=False, capture_output=True, text=True, timeout=timeout_seconds)
+except subprocess.TimeoutExpired:
+    print(f"timeout:{item}:{timeout_seconds}", file=sys.stderr)
+    raise SystemExit(124)
+if result.returncode != 0:
+    if result.stderr:
+        print(result.stderr.strip(), file=sys.stderr)
+    raise SystemExit(result.returncode)
+print(result.stdout.strip())
+PY
+)"
+  exit_code=$?
+  set -e
+  if [[ "$exit_code" -eq 124 ]]; then
+    rb_err "1psa timed out after ${timeout_seconds}s while resolving item: ${item}"
+    return 1
+  fi
+  if [[ "$exit_code" -ne 0 ]]; then
+    rb_err "failed to resolve 1psa item: ${item}"
+    return 1
+  fi
+  printf '%s' "$output"
+}

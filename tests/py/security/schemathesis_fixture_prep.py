@@ -8,17 +8,17 @@ import urllib.request
 from urllib.parse import urlparse
 
 
-def fetch_json(url: str, write_token: str):
-    req = urllib.request.Request(url, headers={"X-Teller-Write-Token": write_token}, method="GET")
+def fetch_json(url: str, write_token: str, write_token_header_name: str):
+    req = urllib.request.Request(url, headers={write_token_header_name: write_token}, method="GET")
     with urllib.request.urlopen(req, timeout=20, context=_tls_context_for_url(url)) as resp:
         return json.load(resp)
 
 
-def post_json(url: str, write_token: str, payload: dict):
+def post_json(url: str, write_token: str, payload: dict, write_token_header_name: str):
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "X-Teller-Write-Token": write_token},
+        headers={"Content-Type": "application/json", write_token_header_name: write_token},
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=20, context=_tls_context_for_url(url)) as resp:
@@ -172,12 +172,12 @@ def choose_first_matching(values, pattern: str) -> str | None:
 
 
 def main() -> int:
-    if len(sys.argv) != 7:
+    if len(sys.argv) != 8:
         raise SystemExit(
-            "usage: schemathesis_fixture_prep.py <openapi_url> <base_url> <out_path> <write_token> <matchy_seed_path> <dast_run_id>"
+            "usage: schemathesis_fixture_prep.py <openapi_url> <base_url> <out_path> <write_token> <write_token_header_name> <matchy_seed_path> <dast_run_id>"
         )
-    openapi_url, base_url, out_path, write_token, matchy_seed_path, dast_run_id = sys.argv[1:7]
-    schema = fetch_json(openapi_url, write_token)
+    openapi_url, base_url, out_path, write_token, write_token_header_name, matchy_seed_path, dast_run_id = sys.argv[1:8]
+    schema = fetch_json(openapi_url, write_token, write_token_header_name)
     category_id = None
     transaction_id = None
     active_match_transaction_ids = []
@@ -236,13 +236,14 @@ def main() -> int:
                 "categorization": f"Runtime [{dast_run_id}]",
                 "applicability": "all",
             },
+            write_token_header_name,
         )
         category_id = created.get("nys_snw_category_id")
     except Exception:
         pass
     if category_id is None:
         try:
-            categories = fetch_json(f"{base_url}/v1/categories", write_token)
+            categories = fetch_json(f"{base_url}/v1/categories", write_token, write_token_header_name)
             if isinstance(categories, list) and categories:
                 category_id = categories[0].get("nys_snw_category_id")
         except Exception:
@@ -263,6 +264,7 @@ def main() -> int:
                     "categorization": f"Runtime [{dast_run_id}] {seed_suffix}",
                     "applicability": f"all-{seed_suffix}",
                 },
+                write_token_header_name,
             )
             return created.get("nys_snw_category_id")
         except Exception:
@@ -273,7 +275,7 @@ def main() -> int:
         if isinstance(seed_id, int):
             delete_seed_ids.append(seed_id)
     try:
-        tx_payload = fetch_json(f"{base_url}/v1/transactions?limit=1&offset=0", write_token)
+        tx_payload = fetch_json(f"{base_url}/v1/transactions?limit=1&offset=0", write_token, write_token_header_name)
         items = tx_payload.get("items", []) if isinstance(tx_payload, dict) else []
         if items:
             transaction_id = items[0].get("transaction_id")
@@ -281,7 +283,7 @@ def main() -> int:
         pass
     if not match_ids:
         try:
-            review_payload = fetch_json(f"{base_url}/v1/matchy/review?limit=25&offset=0", write_token)
+            review_payload = fetch_json(f"{base_url}/v1/matchy/review?limit=25&offset=0", write_token, write_token_header_name)
             review_items = review_payload.get("items", []) if isinstance(review_payload, dict) else []
             for item in review_items:
                 if not isinstance(item, dict):
@@ -304,7 +306,7 @@ def main() -> int:
         if tx_id not in tx_candidates_to_probe:
             tx_candidates_to_probe.append(tx_id)
     try:
-        tx_payload = fetch_json(f"{base_url}/v1/transactions?limit=40&offset=0", write_token)
+        tx_payload = fetch_json(f"{base_url}/v1/transactions?limit=40&offset=0", write_token, write_token_header_name)
         items = tx_payload.get("items", []) if isinstance(tx_payload, dict) else []
         for item in items:
             tx_id = item.get("transaction_id") if isinstance(item, dict) else None
@@ -318,7 +320,7 @@ def main() -> int:
                 # Confirm/override-candidate require no active match for the transaction.
                 continue
             try:
-                candidates = fetch_json(f"{base_url}/v1/matchy/transactions/{tx_id}/candidates", write_token)
+                candidates = fetch_json(f"{base_url}/v1/matchy/transactions/{tx_id}/candidates", write_token, write_token_header_name)
             except Exception:
                 continue
             if not isinstance(candidates, list) or not candidates:

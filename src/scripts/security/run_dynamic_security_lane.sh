@@ -39,6 +39,7 @@ SEMGREP_CONFIG_PATH="${SEMGREP_CONFIG_PATH:-${SECURITY_CONFIG_DIR}/semgrep.yml}"
 BANDIT_CONFIG_PATH="${BANDIT_CONFIG_PATH:-${SECURITY_CONFIG_DIR}/bandit.yml}"
 GITLEAKS_IGNORE_PATH="${GITLEAKS_IGNORE_PATH:-${SECURITY_CONFIG_DIR}/gitleaksignore}"
 WRITE_TOKEN_PSA_ITEM="${WRITE_TOKEN_PSA_ITEM:-TELLER_CLASSIFIER_WRITE_TOKEN}"
+WRITE_TOKEN_HEADER_NAME="${WRITE_TOKEN_HEADER_NAME:-X-Teller-Write-Token}"
 
 mkdir -p "$REPORT_DIR"
 
@@ -173,6 +174,7 @@ security_toolchain_usable() {
 wait_for_http() {
   local url="$1"
   local timeout_seconds="${2:-30}"
+  local watch_pid="${3:-}"
   local curl_args=(-fsS)
   if [[ "$url" == https://* ]]; then
     curl_args+=(-k)
@@ -180,6 +182,10 @@ wait_for_http() {
   local start_ts
   start_ts="$(date +%s)"
   while true; do
+    if [[ -n "$watch_pid" ]] && ! kill -0 "$watch_pid" >/dev/null 2>&1; then
+      echo "❌ Process ${watch_pid} exited before ${url} became ready."
+      return 1
+    fi
     if curl "${curl_args[@]}" "$url" >/dev/null 2>&1; then
       return 0
     fi
@@ -303,7 +309,7 @@ read_classifier_write_token() {
   # Resolve DAST write token from env when present, else 1psa.
   local write_token="${TELLER_CLASSIFIER_WRITE_TOKEN:-}"
   if [[ -z "$write_token" ]]; then
-    write_token="$(1psa -p "$WRITE_TOKEN_PSA_ITEM")"
+    write_token="$(rb_read_1psa_item "$WRITE_TOKEN_PSA_ITEM")"
   fi
   if [[ -z "$write_token" ]]; then
     echo "❌ Failed to read classifier write token from 1psa item: ${WRITE_TOKEN_PSA_ITEM}"
@@ -462,9 +468,10 @@ run_dast_checks() {
     local source_base_url="$2"
     local output_schema_path="$3"
     local write_token="$4"
-    local matchy_seed_path="${5:-}"
-    local dast_run_id="${6:-unknown}"
-    python3 "${SECURITY_PY_DIR}/schemathesis_fixture_prep.py"       "$source_openapi_url"       "$source_base_url"       "$output_schema_path"       "$write_token"       "$matchy_seed_path"       "$dast_run_id"
+    local write_token_header_name="$5"
+    local matchy_seed_path="${6:-}"
+    local dast_run_id="${7:-unknown}"
+    python3 "${SECURITY_PY_DIR}/schemathesis_fixture_prep.py"       "$source_openapi_url"       "$source_base_url"       "$output_schema_path"       "$write_token"       "$write_token_header_name"       "$matchy_seed_path"       "$dast_run_id"
   }
 
   seed_matchy_data_for_schemathesis() {
@@ -752,8 +759,9 @@ PY
     local source_base_url="$2"
     local output_json_path="$3"
     local write_token="$4"
-    local dast_run_id="${5:-unknown}"
-    python3 "${SECURITY_PY_DIR}/delete_category_contract_check.py"       "$schema_path"       "$source_base_url"       "$output_json_path"       "$write_token"       "$dast_run_id"
+    local write_token_header_name="$5"
+    local dast_run_id="${6:-unknown}"
+    python3 "${SECURITY_PY_DIR}/delete_category_contract_check.py"       "$schema_path"       "$source_base_url"       "$output_json_path"       "$write_token"       "$write_token_header_name"       "$dast_run_id"
   }
 
   local report_dir="$1"
@@ -1054,17 +1062,19 @@ server.socket = context.wrap_socket(server.socket, server_side=True)
 server.serve_forever()
 PY
       mailcart_stub_pid="$!"
-      wait_for_http "${mailcart_stub_url}/health" 30
+      wait_for_http "${mailcart_stub_url}/health" 30 "$mailcart_stub_pid"
       export MAILCART_SERVICE_BASE_URL="$mailcart_stub_url"
       echo "▶ DAST Mailcart base URL: ${MAILCART_SERVICE_BASE_URL}"
     fi
     echo "▶ Starting local classification API for Dynamic Application Security Testing (DAST) at ${base_url}"
     TELLER_CLASSIFIER_WRITE_TOKEN="$dast_write_token" \
       TELLER_CLASSIFIER_API_HOST="$base_host" TELLER_CLASSIFIER_API_PORT="$base_port" \
+      CLASSIFICATION_API_HOST="$base_host" CLASSIFICATION_API_PORT="$base_port" \
+      CLASSY_API_HOST="$base_host" CLASSY_API_PORT="$base_port" \
       "$dast_app_python" "./${DAST_APP_SCRIPT}" >"${report_dir_abs}/classification-api.log" 2>&1 &
     classifier_api_pid="$!"
   fi
-  wait_for_http "${base_url}/health" 45
+  wait_for_http "${base_url}/health" 45 "$classifier_api_pid"
 
   # Run Schemathesis and ZAP quick scans with configurable targets and gating.
   if [[ "$run_schemathesis" == "true" ]]; then
@@ -1092,7 +1102,7 @@ PY
     else
       echo "ℹ️  Schemathesis matchy DB seeding skipped (DAST_DB_INTEGRATION=false)."
     fi
-    if prepare_schemathesis_openapi_fixture "$openapi_url" "$base_url" "$schemathesis_openapi_fixture" "$dast_write_token" "$schemathesis_matchy_seed" "$dast_run_id" \
+    if prepare_schemathesis_openapi_fixture "$openapi_url" "$base_url" "$schemathesis_openapi_fixture" "$dast_write_token" "$WRITE_TOKEN_HEADER_NAME" "$schemathesis_matchy_seed" "$dast_run_id" \
       > "${report_dir_abs}/schemathesis-fixture.json"; then
       schemathesis_location="$schemathesis_openapi_fixture"
       echo "▶ Schemathesis fixture prepared at ${schemathesis_location}"
@@ -1105,13 +1115,14 @@ PY
       "$base_url" \
       "${report_dir_abs}/schemathesis-delete-category-contract.json" \
       "$dast_write_token" \
+      "$WRITE_TOKEN_HEADER_NAME" \
       "$dast_run_id" \
       | tee "${report_dir_abs}/schemathesis-delete-category-contract.log"
     #R050: Write raw output temporarily, then persist only token-redacted artifacts.
     local schemathesis_raw_log="${report_dir_abs}/schemathesis-raw.log"
     set +e
     "$dast_app_python" - "$schemathesis_raw_log" "$report_dir_abs" "$schemathesis_location" "$base_url" \
-      "$dast_write_token" "$schemathesis_mode" "$schemathesis_seed" "$schemathesis_max_examples" \
+      "$dast_write_token" "$WRITE_TOKEN_HEADER_NAME" "$schemathesis_mode" "$schemathesis_seed" "$schemathesis_max_examples" \
       "$schemathesis_timeout_seconds" <<'PY'
 import subprocess
 import sys
@@ -1122,10 +1133,11 @@ working_directory = Path(sys.argv[2])
 schemathesis_location = sys.argv[3]
 base_url = sys.argv[4]
 write_token = sys.argv[5]
-schemathesis_mode = sys.argv[6]
-schemathesis_seed = sys.argv[7]
-schemathesis_max_examples = sys.argv[8]
-timeout_seconds = int(sys.argv[9])
+write_token_header = sys.argv[6]
+schemathesis_mode = sys.argv[7]
+schemathesis_seed = sys.argv[8]
+schemathesis_max_examples = sys.argv[9]
+timeout_seconds = int(sys.argv[10])
 
 command = [
     "schemathesis",
@@ -1135,7 +1147,7 @@ command = [
     base_url,
     "--tls-verify=false",
     "--header",
-    f"X-Teller-Write-Token: {write_token}",
+    f"{write_token_header}: {write_token}",
     "--mode",
     schemathesis_mode,
     "--seed",
