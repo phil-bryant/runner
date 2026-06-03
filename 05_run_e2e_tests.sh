@@ -9,7 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/src/scripts/runbook_common.sh"
 REPO_ROOT="$RUNBOOK_REPO_ROOT"
 PYTHON_BIN="${REPO_ROOT}/${VENV_NAME}/bin/python"
-E2E_TEST="${REPO_ROOT}/test_e2e_cases.py"
+TESTS_DIR="${REPO_ROOT}/tests"
+E2E_TEST="${TESTS_DIR}/test_e2e_cases.py"
 
 #R015: Require the workspace venv python.
 if [ ! -x "$PYTHON_BIN" ]; then
@@ -24,7 +25,7 @@ if [ "${1:-}" = "--record" ]; then
   shift
   echo "▶ Recording AI selections via the real matchy AI ranker (online)..."
   cd "$REPO_ROOT"
-  PYTHONPATH="$REPO_ROOT" "$PYTHON_BIN" -m harness.record "$@"
+  PYTHONPATH="$TESTS_DIR" "$PYTHON_BIN" -m harness.record "$@"
   exit 0
 fi
 
@@ -38,4 +39,4 @@ fi
 #R030: Run engine-level matching cases (deterministic, offline).
 echo "▶ Running eggnest engine-level matching cases..."
 cd "$REPO_ROOT"
-PYTHONPATH="$REPO_ROOT" "$PYTHON_BIN" -m pytest "$E2E_TEST" "$@"
+PYTHONPATH="$TESTS_DIR" "$PYTHON_BIN" -m pytest "$E2E_TEST" "$@"
