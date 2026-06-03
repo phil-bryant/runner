@@ -861,7 +861,12 @@ if [[ "$RUN_SAST" == "true" ]]; then
   #R050: `macos-ui`), tests/py, and numbered root scripts. Matches teller's intent without scanning
   #R050: runner-owned tooling copies under src/scripts.
   bandit_targets=()
-  if [[ -d ./src ]]; then
+  if [[ -n "${PYTHON_SRC_DIRS:-}" ]]; then
+    # Explicit app source dirs (e.g. matchy's top-level ./matchy package).
+    for bandit_src in $PYTHON_SRC_DIRS; do
+      [[ -d "./${bandit_src#./}" ]] && bandit_targets+=("./${bandit_src#./}")
+    done
+  elif [[ -d ./src ]]; then
     for bandit_src_sub in ./src/*/; do
       bandit_src_base="$(basename "$bandit_src_sub")"
       [[ "$bandit_src_base" == "scripts" || "$bandit_src_base" == "macos-ui" ]] && continue
@@ -918,7 +923,7 @@ if [[ "$RUN_SAST" == "true" ]]; then
   echo "▶ Running detect-secrets"
   set +e
   detect-secrets scan --all-files --force-use-all-plugins \
-    --exclude-files "(^\.git/|^${VENV_NAME}/|^\.venv/|^artifacts/|^\.ruff_cache/|^\.pytest_cache/|^__pycache__/|^backups/|^archive/backup_extracts/|^README\.md\$|^config/bank_statements/|^config/security/binary-integrity-policy\.json\$|^tests/sh/99_restore_database\.bats\$|^src/macos-ui/\.derivedData-ui-tests/|^src/macos-ui/\.build/|^requirements/)" \
+    --exclude-files "(^\.git/|^\.security-reports/|^\.cursor/|^${VENV_NAME}/|^\.venv/|^\.build/|^artifacts/|^\.ruff_cache/|^\.pytest_cache/|^__pycache__/|^backups/|^archive/backup_extracts/|^README\.md\$|^config/bank_statements/|^config/security/binary-integrity-policy\.json\$|^tests/sh/99_restore_database\.bats\$|^src/macos-ui/\.derivedData-ui-tests/|^src/macos-ui/\.build/|^requirements/)" \
     > "${REPORT_DIR}/detect-secrets.json"
   DETECT_SECRETS_EXIT=$?
   set -e

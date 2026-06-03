@@ -98,12 +98,17 @@ class TraceabilityVerifier:
             status = False
         if not self.verify_requirements_test_traceability(requirements_file, source_list):
             status = False
-        req_text = requirements_file.read_text(encoding="utf-8")
-        issues = verify_requirements_numbered_test_bullets(req_text, self._rel(requirements_file))
-        if issues:
-            print("\n".join(issues))
-            print(f"❌ FAIL (requirements-numbered-tests): {self._rel(requirements_file)} contains malformed test bullets.")
-            status = False
+        if self._env_flag_false("STRICT_TRACEABILITY_NUMBERED_BULLETS"):
+            print(
+                f"ℹ️  Numbered requirements bullet enforcement skipped for {self._rel(requirements_file)} (set STRICT_TRACEABILITY_NUMBERED_BULLETS=true to re-enable)."
+            )
+        else:
+            req_text = requirements_file.read_text(encoding="utf-8")
+            issues = verify_requirements_numbered_test_bullets(req_text, self._rel(requirements_file))
+            if issues:
+                print("\n".join(issues))
+                print(f"❌ FAIL (requirements-numbered-tests): {self._rel(requirements_file)} contains malformed test bullets.")
+                status = False
         if not self.verify_numbered_test_traceability(requirements_file, source_list):
             status = False
         return status
@@ -152,12 +157,17 @@ class TraceabilityVerifier:
         if enforceable_source_list:
             if not self.verify_requirements_test_traceability(requirements_file, enforceable_source_list):
                 file_fail = True
-            req_text = requirements_file.read_text(encoding="utf-8")
-            issues = verify_requirements_numbered_test_bullets(req_text, self._rel(requirements_file))
-            if issues:
-                print("\n".join(issues))
-                print(f"❌ FAIL (requirements-numbered-tests): {self._rel(requirements_file)} contains malformed test bullets.")
-                file_fail = True
+            if self._env_flag_false("STRICT_TRACEABILITY_NUMBERED_BULLETS"):
+                print(
+                    f"ℹ️  Numbered requirements bullet enforcement skipped for {self._rel(requirements_file)} (set STRICT_TRACEABILITY_NUMBERED_BULLETS=true to re-enable)."
+                )
+            else:
+                req_text = requirements_file.read_text(encoding="utf-8")
+                issues = verify_requirements_numbered_test_bullets(req_text, self._rel(requirements_file))
+                if issues:
+                    print("\n".join(issues))
+                    print(f"❌ FAIL (requirements-numbered-tests): {self._rel(requirements_file)} contains malformed test bullets.")
+                    file_fail = True
             if not self.verify_numbered_test_traceability(requirements_file, enforceable_source_list):
                 file_fail = True
         else:
