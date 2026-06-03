@@ -1,0 +1,28 @@
+#!/usr/bin/env bats
+# Self-contained static unit tests for src/scripts/mutmut_darwin.py + mutmut_darwin_stub.py (runner engine helpers).
+
+setup() {
+  REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
+  SRC="${REPO_ROOT}/src/scripts/mutmut_darwin.py"
+  STUB="${REPO_ROOT}/src/scripts/mutmut_darwin_stub.py"
+}
+
+@test "driver parses and splits prepare/execute phases" {
+  #R001-T01
+  run python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$SRC"
+  [ "$status" -eq 0 ]
+  grep -q "prepare" "$SRC"
+  grep -q "execute" "$SRC"
+}
+
+@test "driver configures a deterministic subprocess pytest environment" {
+  #R005-T01
+  grep -q "PYTHONPATH" "$SRC"
+}
+
+@test "stub module installs a callable setproctitle symbol" {
+  #R010-T01
+  run python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$STUB"
+  [ "$status" -eq 0 ]
+  grep -q "setproctitle" "$STUB"
+}

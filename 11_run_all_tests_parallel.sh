@@ -118,7 +118,7 @@ PROGRESS_INTERVAL_SECONDS="${PARALLEL_CHECKS_PROGRESS_INTERVAL_SECONDS:-1}"
 if [[ ! "$PROGRESS_INTERVAL_SECONDS" =~ ^[0-9]+$ || "$PROGRESS_INTERVAL_SECONDS" -le 0 ]]; then
   PROGRESS_INTERVAL_SECONDS=1
 fi
-LOCK_FILE="${SCRIPT_DIR}/.10_run_all_tests_parallel.lock"
+LOCK_FILE="${RUNBOOK_REPO_ROOT}/.10_run_all_tests_parallel.lock"
 PROGRESS_INLINE=false
 if [[ -t 1 ]]; then
   PROGRESS_INLINE=true
@@ -338,6 +338,7 @@ long_pole_script=""
 long_pole_seconds=0
 
 #R015: Per-lane worker; exported so it can run in its own session and report over the completion FIFO.
+# shellcheck disable=SC2329  # invoked indirectly via `export -f run_lane_worker` + `bash -c`.
 run_lane_worker() {
   local script="$1"
   set +e
@@ -381,7 +382,8 @@ run_lane_worker() {
 
   if [[ "$script" == "t05_deploy_database_verification_test.sh" || "$script" == "t06_run_sql_unit_tests.sh" || "$script" == "t16_classification_persistence_verification_test.sh" || "$script" == "t12_run_dynamic_security_tests.sh" ]]; then
     local lock_wait_timeout="${PARALLEL_DB_LOCK_WAIT_TIMEOUT_SECONDS:-180}"
-    local lock_wait_start="$(date +%s)"
+    local lock_wait_start
+    lock_wait_start="$(date +%s)"
     local now_epoch=0
     while ! mkdir "$db_lock_dir" 2>/dev/null; do
       now_epoch="$(date +%s)"

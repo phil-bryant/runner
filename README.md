@@ -22,6 +22,22 @@ Two locations stay distinct:
 - `RUNNER_HOME` — the runner tree (golden code + helpers).
 - `RUNBOOK_REPO_ROOT` — the repo being operated on (its `<repo>-venv`, `src/`, `config/`, `tests/`).
 
+## Running runner on itself
+
+Runner can also be the target repo. The engine only runs the lanes that make sense for itself — antivirus,
+dependency freshness, static security, requirements traceability, and shell unit tests:
+
+```bash
+cd runner
+./02_create_venv.sh && source runner-venv/bin/activate && ./04_load_requirements.sh && deactivate
+./run_self_checks.sh             # 5 self lanes against runner, all green
+```
+
+`run_self_checks.sh` sets `RUNBOOK_REPO_ROOT` to runner, sources `config/runbook/runner.env`, and execs the
+golden `11_run_all_tests_parallel.sh`. Because the goldens live in `tests/tNN_*.sh`, the profile sets
+`TEST_POINTER_PREFIX="r"` so discovery runs the thin `tests/rtNN_*.sh` self-pointers (rt01/rt02/rt03/rt04/rt07)
+instead of the shared goldens. The numbered/heavy DB/UI lanes are intentionally not part of the self-run.
+
 ## Profiles
 
 [`config/runbook/`](config/runbook/) holds one declarative `.env` per repo. The repo's pointer sources its
@@ -34,6 +50,7 @@ target) but never secrets (secrets are referenced by 1psa item name).
 | matchy | `config/runbook/matchy.env` |
 | mailcart | `config/runbook/mailcart.env` |
 | classy | `config/runbook/classy.env` |
+| runner (self-run) | `config/runbook/runner.env` |
 | eggnest workspace root | `config/runbook/eggnest.env` |
 
 ## Ordered workflows
