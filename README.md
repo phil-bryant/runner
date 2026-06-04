@@ -33,6 +33,10 @@ cd runner
 ./11_run_all_self_tests_parallel.sh   # 5 self lanes against runner, all green
 ```
 
+The load-requirements step bootstraps a hash-pinned secure `pip` (`26.1.2`) before self-tests run. If `t03` ever
+fails with `pip-audit` findings on `pip` itself, reactivate `runner-venv` and rerun `./04_load_requirements.sh`
+(or recreate the venv with `./02_create_venv.sh`) before running `./11_run_all_self_tests_parallel.sh` again.
+
 `11_run_all_self_tests_parallel.sh` sets `RUNBOOK_REPO_ROOT` to runner, sources `config/runbook/runner.env`, and execs the
 golden `07_run_all_tests_parallel.sh`. The orchestrator discovers runner's own `tests/tNN_*.sh` goldens and runs only the
 lanes named in `RUN_LANE_ALLOWLIST` (`t01` AV, `t02` dependency freshness, `t03` static security, `t04` requirements
@@ -64,8 +68,8 @@ cd ../teller
 ./02_create_venv.sh
 activate
 ./04_load_requirements.sh        # hash-pinned install (locked golden)
-./05_deploy_database.sh          # applies teller/src/sql DDL to the profile target
-./06_run_all_tests_parallel.sh   # discovers and runs teller/tests/tNN_*
+./05_deploy_database.sh          # teller pointer -> runner/06_deploy_database.sh
+./06_run_all_tests_parallel.sh   # teller pointer -> runner/07_run_all_tests_parallel.sh
 ```
 
 ### matchy — checks

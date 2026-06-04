@@ -39,6 +39,10 @@ RUN_SWIFT_SAST="${RUN_SWIFT_SAST:-true}"
 #R090: Default financial-app policy blocks medium-or-higher security findings.
 FAIL_ON_MEDIUM_OR_HIGHER="${SECURITY_FAIL_ON_MEDIUM_OR_HIGHER:-${SECURITY_FAIL_ON_HIGH_CRITICAL:-true}}"
 SECURITY_VENV_DIR="${SECURITY_VENV_DIR:-./artifacts/venv/security}"
+#R120: Enforce a secure pip baseline before dependency vulnerability scanning.
+PIP_AUDIT_MIN_SECURE_PIP_VERSION="${PIP_AUDIT_MIN_SECURE_PIP_VERSION:-26.1}"
+BOOTSTRAP_PIP_VERSION="${BOOTSTRAP_PIP_VERSION:-26.1.2}"
+BOOTSTRAP_PIP_SHA256="${BOOTSTRAP_PIP_SHA256:-382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab}"
 #R105: Runner-owned security lockfile (repo override else runner default).
 SECURITY_REQUIREMENTS_FILE="${SECURITY_REQUIREMENTS_FILE:-$(security_resolve_asset requirements/security/requirements-security.txt)}"
 RUNTIME_REQUIREMENTS_FILE="${RUNTIME_REQUIREMENTS_FILE:-./requirements.txt}"
@@ -274,7 +278,8 @@ wait_for_http() {
   local url="$1"
   local timeout_seconds="${2:-30}"
   local curl_args=(-fsS)
-  if [[ "$url" == https://* ]]; then
+  local https_localhost_pattern='^https://(localhost|127\.0\.0\.1|\[::1\]|[A-Za-z0-9.-]+\.localhost)(:[0-9]+)?($|/)'
+  if [[ "$url" =~ $https_localhost_pattern ]]; then
     curl_args+=(-k)
   fi
   local start_ts
@@ -781,7 +786,100 @@ configure_pip_audit_python() {
   fi
 }
 
+pip_version_gte() {
+  local lhs="$1"
+  local rhs="$2"
+  python3 - <<'PY' "$lhs" "$rhs"
+import re
+import sys
+
+def normalize(version: str) -> list[int]:
+    parts = [int(part) for part in re.findall(r"\d+", version)]
+    return parts or [0]
+
+left = normalize(sys.argv[1])
+right = normalize(sys.argv[2])
+size = max(len(left), len(right))
+left.extend([0] * (size - len(left)))
+right.extend([0] * (size - len(right)))
+raise SystemExit(0 if left >= right else 1)
+PY
+}
+
+pip_version_for_python() {
+  local python_bin="$1"
+  "$python_bin" - <<'PY'
+import importlib.metadata
+
+print(importlib.metadata.version("pip"))
+PY
+}
+
+#R120: Keep the pip-audit target environment on a known secure pip baseline.
+enforce_pip_audit_secure_baseline() {
+  local target_python=""
+  local current_pip_version=""
+  local upgraded_pip_version=""
+  local bootstrap_requirements_file=""
+
+  if [[ -n "${PIPAPI_PYTHON_LOCATION:-}" ]] && python_interpreter_usable "${PIPAPI_PYTHON_LOCATION}"; then
+    target_python="${PIPAPI_PYTHON_LOCATION}"
+  elif python_interpreter_usable "./${VENV_NAME}/bin/python3"; then
+    target_python="./${VENV_NAME}/bin/python3"
+  elif command -v python3 >/dev/null 2>&1; then
+    target_python="$(command -v python3)"
+  fi
+
+  if [[ -z "$target_python" ]]; then
+    echo "❌ Unable to resolve a Python interpreter for pip-audit baseline enforcement."
+    exit 1
+  fi
+
+  export PIPAPI_PYTHON_LOCATION="$target_python"
+
+  current_pip_version="$(pip_version_for_python "$target_python" 2>/dev/null || true)"
+  if [[ -z "$current_pip_version" ]]; then
+    echo "❌ Unable to determine pip version for pip-audit target: ${target_python}"
+    exit 1
+  fi
+
+  if pip_version_gte "$current_pip_version" "$PIP_AUDIT_MIN_SECURE_PIP_VERSION"; then
+    echo "ℹ️  pip-audit pip baseline already secure: pip ${current_pip_version} (>= ${PIP_AUDIT_MIN_SECURE_PIP_VERSION})"
+    return 0
+  fi
+
+  if ! pip_version_gte "$BOOTSTRAP_PIP_VERSION" "$PIP_AUDIT_MIN_SECURE_PIP_VERSION"; then
+    echo "❌ BOOTSTRAP_PIP_VERSION (${BOOTSTRAP_PIP_VERSION}) is below the secure pip baseline (${PIP_AUDIT_MIN_SECURE_PIP_VERSION})."
+    exit 1
+  fi
+
+  bootstrap_requirements_file="$(mktemp "${TMPDIR:-/tmp}/runbook-security-pip-bootstrap.XXXXXX.txt")"
+  cat > "$bootstrap_requirements_file" <<EOF
+pip==${BOOTSTRAP_PIP_VERSION} --hash=sha256:${BOOTSTRAP_PIP_SHA256}
+EOF
+
+  echo "▶ Upgrading pip for pip-audit baseline: ${current_pip_version} -> ${BOOTSTRAP_PIP_VERSION}"
+  if ! "$target_python" -m pip install --upgrade --require-hashes --only-binary=:all: -r "$bootstrap_requirements_file"; then
+    rm -f "$bootstrap_requirements_file"
+    echo "❌ Failed to bootstrap secure pip baseline for pip-audit."
+    exit 1
+  fi
+  rm -f "$bootstrap_requirements_file"
+
+  upgraded_pip_version="$(pip_version_for_python "$target_python" 2>/dev/null || true)"
+  if [[ -z "$upgraded_pip_version" ]]; then
+    echo "❌ Unable to verify pip version after secure baseline upgrade."
+    exit 1
+  fi
+  if ! pip_version_gte "$upgraded_pip_version" "$PIP_AUDIT_MIN_SECURE_PIP_VERSION"; then
+    echo "❌ pip baseline remains insecure after upgrade (${upgraded_pip_version} < ${PIP_AUDIT_MIN_SECURE_PIP_VERSION})."
+    exit 1
+  fi
+  echo "✅ pip-audit pip baseline secured: pip ${upgraded_pip_version}"
+}
+
 configure_pip_audit_python
+enforce_pip_audit_secure_baseline
 #R110: Supply-chain SBOM/signing requires hash-pinned lockfiles; presence-gate it for repos without them.
 if [[ "${RUN_SUPPLY_CHAIN:-true}" == "true" ]] && requirements_file_has_hashes "$RUNTIME_REQUIREMENTS_FILE"; then
   generate_supply_chain_artifacts
