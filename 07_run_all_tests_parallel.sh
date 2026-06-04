@@ -605,30 +605,28 @@ for exit_file in sorted(report_dir.glob("*.log.exit")):
 
 lane_status = {entry["lane"]: 1.0 if entry["status"] == "pass" else 0.0 for entry in lane_entries}
 
-# Group lanes by intent. The DEFAULT map is teller's (stems of `tests/t*.sh`). A repo profile
-# can override it via QUALITY_LANE_GROUPS (JSON: {group: [lane_stem, ...]}) so other repos are
-# not measured against teller's lanes. Custom maps use a generic score (reliability + mean of
-# group scores). With the default map an empty group scores 0.0 (fail-loud).
+# Group lanes by intent. The DEFAULT map targets the compact t00-t10 lane set used by runner and
+# repos with matching numbering. A repo profile can override it via QUALITY_LANE_GROUPS
+# (JSON: {group: [lane_stem, ...]}) when it has additional or differently numbered lanes (for
+# example, teller). Custom maps use a generic score (reliability + mean of group scores). With
+# the default map an empty group scores 0.0 (fail-loud).
 DEFAULT_LANE_GROUPS = {
     "behavioral_coverage": (
-        "t05_deploy_database_verification_test",
-        "t12_run_teller_api_smoke_tests",
+        "t04_run_requirements_traceability_tests",
+        "t05_run_shell_unit_tests",
     ),
     "effectiveness_quality": (
         "t00_run_code_quality_tests",
-        "t06_run_sql_unit_tests",
-        "t07_run_shell_unit_tests",
-        "t08_run_python_unit_tests",
-        "t09_run_mutation_tests",
-        "t10_run_fuzz_tests",
+        "t06_run_python_unit_tests",
+        "t07_run_mutation_tests",
+        "t08_run_fuzz_tests",
     ),
     "security_runtime_quality": (
         "t01_run_av_test",
         "t02_run_dependency_freshness_tests",
         "t03_run_static_security_tests",
-        "t11_run_dynamic_security_tests",
-        "t13_run_teller_live_canary_test",
-        "t14_verify_filevault_encryption_test",
+        "t09_run_dynamic_security_tests",
+        "t10_verify_filevault_encryption_test",
     ),
 }
 _groups_env = os.environ.get("QUALITY_LANE_GROUPS", "").strip()
