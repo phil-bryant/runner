@@ -12,6 +12,17 @@ Tests:
 - R065-T01: Verify orchestrator source usage/help text includes `--no-ui` and `--no-mutation`.
 - R065-T02: Verify orchestrator source filters discovered checks using both skip patterns and exports skipped lane stems via `PARALLEL_CHECKS_SKIPPED_LANES`.
 
+R070  Statement: Interrupt cleanup must be scoped to lane sessions launched by the current orchestrator invocation.
+Design: `terminate_child_checks` iterates tracked lane session leaders (`child_pids`) and sends TERM/KILL to those process trees/process groups only; avoid repo-agnostic global process matching that can terminate sibling-repo lanes.
+Tests:
+- R070-T01: Verify orchestrator source cleanup path does not use script-path `pgrep -f` fallback and instead iterates tracked child session leaders.
+
+R075  Statement: Cleanup-originated lane terminations must be diagnosable from orchestrator artifacts.
+Design: For each cleanup signal sent, append provenance metadata (`timestamp`, `signal`, `reason`, `pid`) to `${lane_log}.cleanup`; classify failed lanes with cleanup metadata as `orchestrator-cleanup` and print provenance in the failure summary.
+Tests:
+- R075-T01: Verify orchestrator source writes `.cleanup` provenance records during cleanup and surfaces `orchestrator-cleanup` as failure reason when metadata exists.
+
 ## Changelog
 
 - 2026-06-03: Documented optional `--no-mutation` lane skip behavior alongside `--no-ui`.
+- 2026-06-04: Added scoped cleanup and cleanup-provenance requirements to prevent cross-repo lane termination ambiguity.

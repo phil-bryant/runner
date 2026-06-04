@@ -361,6 +361,14 @@ def make_report(
 
 def format_report_text(report: dict[str, Any]) -> str:
     summary = report["summary"]
+    requirements_file = str(report.get("requirements_file") or "requirements.txt")
+    requirements_path = Path(requirements_file).expanduser().resolve(strict=False)
+    requirements_label = str(requirements_path)
+    direct_requirements_file = report.get("direct_requirements_file")
+    if direct_requirements_file:
+        direct_requirements_label = str(Path(str(direct_requirements_file)).expanduser().resolve(strict=False))
+    else:
+        direct_requirements_label = requirements_label
     lines = [
         "Dependency freshness report",
         f"- Total outdated: {summary['total_outdated']}",
@@ -375,7 +383,6 @@ def format_report_text(report: dict[str, Any]) -> str:
         f"- Venv cruft status: {report.get('venv_cruft_status', 'unknown')}",
         f"- Venv cruft packages: {len(report.get('venv_cruft_packages', []))}",
     ]
-    direct_requirements_file = report.get("direct_requirements_file")
     if direct_requirements_file:
         lines.append(f"- Direct requirements file: {direct_requirements_file}")
     lines.append("")
@@ -387,7 +394,7 @@ def format_report_text(report: dict[str, Any]) -> str:
 
     lines.append("Outdated packages:")
     for item in packages:
-        source = "requirements.txt" if item["in_requirements_txt"] else "transitive"
+        source = direct_requirements_label if item["in_requirements_txt"] else "transitive"
         pin_state = "pinned" if item["is_exact_pin_in_requirements"] else "not-pinned"
         actionability = item.get("outdated_actionability", "unknown")
         lines.append(
@@ -397,7 +404,7 @@ def format_report_text(report: dict[str, Any]) -> str:
     cruft_packages = report.get("venv_cruft_packages", [])
     if cruft_packages:
         lines.append("")
-        lines.append("Venv cruft packages (requested but not declared in requirements.txt):")
+        lines.append(f"Venv cruft packages (requested but not declared in {requirements_label}):")
         for package in cruft_packages:
             lines.append(f"- {package}")
     return "\n".join(lines) + "\n"

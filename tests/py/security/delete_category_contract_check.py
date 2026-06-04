@@ -39,12 +39,13 @@ def _tls_context_for_url(url: str):
     parsed = urlparse(url)
     if parsed.scheme.lower() != "https":
         return None
-    if (parsed.hostname or "").lower() in {"127.0.0.1", "localhost", "::1"}:
-        return ssl._create_unverified_context()
+    hostname = (parsed.hostname or "").lower()
     cert_file = os.environ.get("SSL_CERT_FILE") or os.environ.get("TELLER_CLASSIFIER_TLS_CERT_FILE")
     if cert_file and os.path.isfile(cert_file):
         return ssl.create_default_context(cafile=cert_file)
-    return ssl._create_unverified_context()
+    if hostname in {"127.0.0.1", "localhost", "::1"} or hostname.endswith(".localhost"):
+        return ssl._create_unverified_context()
+    return ssl.create_default_context()
 
 
 def _load_schema(schema_path_or_url: str):

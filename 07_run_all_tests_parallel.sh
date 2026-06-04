@@ -155,6 +155,7 @@ if [[ -t 1 ]]; then
   PROGRESS_INLINE=true
 fi
 child_pids=()
+child_scripts=()
 cleanup_finished=false
 signal_exit_code=""
 
@@ -163,6 +164,14 @@ finish_progress_line() {
   if [[ "$PROGRESS_INLINE" == "true" ]]; then
     printf '\n'
   fi
+}
+
+emit_cleanup_line() {
+  local message="$1"
+  if [[ "$PROGRESS_INLINE" == "true" ]]; then
+    printf '\r\033[2K'
+  fi
+  echo "$message"
 }
 
 # Move superseded artifacts to ~/.Trash instead of deleting (repository no-rm policy).
@@ -230,31 +239,27 @@ acquire_single_run_lock() {
 
 #R055: Terminate launched child checks on interrupt or termination.
 terminate_child_checks() {
-  local pid match_pid script
-  # Recursively reap each launched session leader and its descendant tree.
-  for pid in "${child_pids[@]}"; do
-    [[ -n "$pid" ]] || continue
-    kill_process_tree TERM "$pid"
-    kill -TERM "-$pid" 2>/dev/null || true
-  done
-  # Fallback: reap any lane still discoverable by its script path (covers reparented sessions).
-  for script in "${CHECKS[@]}"; do
-    while IFS= read -r match_pid; do
-      kill_process_tree TERM "$match_pid"
-    done < <(pgrep -f "${CHECKS_DIR}/${script}" 2>/dev/null || true)
-  done
-
-  sleep 1
-
-  for pid in "${child_pids[@]}"; do
-    [[ -n "$pid" ]] || continue
-    kill_process_tree KILL "$pid"
-    kill -KILL "-$pid" 2>/dev/null || true
-  done
-  for script in "${CHECKS[@]}"; do
-    while IFS= read -r match_pid; do
-      kill_process_tree KILL "$match_pid"
-    done < <(pgrep -f "${CHECKS_DIR}/${script}" 2>/dev/null || true)
+  local reason="${1:-cleanup-requested}"
+  local signal idx pid script log cleanup_file
+  # Only terminate sessions launched by this orchestrator invocation.
+  for signal in TERM KILL; do
+    for idx in "${!child_pids[@]}"; do
+      pid="${child_pids[$idx]}"
+      script="${child_scripts[$idx]:-unknown-lane}"
+      [[ -n "$pid" ]] || continue
+      if ! kill -0 "$pid" 2>/dev/null; then
+        continue
+      fi
+      log="${REPORT_DIR}/${script%.sh}.log"
+      cleanup_file="${log}.cleanup"
+      printf '%s signal=%s reason=%s pid=%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$signal" "$reason" "$pid" >> "$cleanup_file"
+      emit_cleanup_line "ℹ️  cleanup: ${reason}; sending ${signal} to ${script} (pid ${pid}, pgid -${pid})"
+      kill_process_tree "$signal" "$pid"
+      kill -"$signal" "-$pid" 2>/dev/null || true
+    done
+    if [[ "$signal" == "TERM" ]]; then
+      sleep 1
+    fi
   done
 }
 
@@ -264,7 +269,7 @@ stop_on_signal() {
     exit "$exit_code"
   fi
   cleanup_finished=true
-  terminate_child_checks
+  terminate_child_checks "orchestrator-signal-${exit_code}"
   finish_progress_line
   echo "Interrupted; stopped parallel checks." >&2
   release_single_run_lock
@@ -338,6 +343,10 @@ derive_failure_reason() {
     echo "lane-timeout"
     return
   fi
+  if [[ -s "${log_file}.cleanup" ]]; then
+    echo "orchestrator-cleanup"
+    return
+  fi
   if grep -q "^❌" "$log_file"; then
     echo "script-error"
     return
@@ -352,6 +361,14 @@ print_failure_excerpt() {
   fi
   emit_result_line "   ↳ recent log lines:"
   awk 'NF { lines[count % 3] = $0; count++ } END { start = (count > 3 ? count - 3 : 0); for (i = start; i < count; i++) { idx = i % 3; print "     " lines[idx]; } }' "$log_file"
+}
+
+print_cleanup_provenance() {
+  local log_file="$1"
+  local cleanup_file="${log_file}.cleanup"
+  [[ -f "$cleanup_file" ]] || return
+  emit_result_line "   ↳ cleanup provenance:"
+  awk 'END { if (NR > 0) { print "     " $0; } }' "$cleanup_file"
 }
 
 for script in "${CHECKS[@]}"; do
@@ -454,10 +471,12 @@ for script in "${CHECKS[@]}"; do
   safe_move_to_trash "${log}"
   safe_move_to_trash "${log}.exit"
   safe_move_to_trash "${log}.start"
+  safe_move_to_trash "${log}.cleanup"
   date +%s > "${log}.start"
   # shellcheck disable=SC2016
   run_in_new_session bash -c 'run_lane_worker "$0"' "$script" &
   child_pids+=("$!")
+  child_scripts+=("$script")
 done
 
 if [[ "${PARALLEL_CHECKS_TEST_INTERRUPT:-}" == "1" ]]; then
@@ -502,6 +521,9 @@ record_check_result() {
     local failure_reason
     failure_reason="$(derive_failure_reason "$log")"
     emit_result_line "❌ FAIL: ${completed_script} (exit ${completed_exit}, ${elapsed}s, reason=${failure_reason}) — see ${log}"
+    if [[ "$failure_reason" == "orchestrator-cleanup" ]]; then
+      print_cleanup_provenance "$log"
+    fi
     print_failure_excerpt "$log"
     fail_count=$((fail_count + 1))
   fi

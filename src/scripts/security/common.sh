@@ -137,7 +137,8 @@ wait_for_http() {
   local url="$1"
   local timeout_seconds="${2:-30}"
   local curl_args=(-fsS)
-  if [[ "$url" == https://* ]]; then
+  local https_localhost_pattern='^https://(localhost|127\.0\.0\.1|\[::1\]|[A-Za-z0-9.-]+\.localhost)(:[0-9]+)?($|/)'
+  if [[ "$url" =~ $https_localhost_pattern ]]; then
     curl_args+=(-k)
   fi
   local start_ts

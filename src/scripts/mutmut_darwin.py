@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import tomllib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -96,6 +97,15 @@ def _prepare(root: Path, max_children: int) -> int:
 def _load_stats(root: Path) -> dict:
     stats_path = root / "mutants" / "mutmut-stats.json"
     return json.loads(stats_path.read_text(encoding="utf-8"))
+
+
+def _positive_int_from_env(name: str, default: int) -> int:
+    raw = os.environ.get(name, str(default)).strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 def _tests_for_mutant(stats: dict, mutant_name: str) -> list[str]:
@@ -189,7 +199,7 @@ def _run_mutant_pytest(python: Path, root: Path, mutant_name: str, tests: list[s
 
 
 def _should_rerun_mutant(prior: int | None, rerun_codes: set[int | None]) -> bool:
-    return prior in rerun_codes or prior == 33
+    return prior in rerun_codes or prior == 33 or (isinstance(prior, int) and prior < 0)
 
 
 def _status_for_exit_code(exit_code: int) -> str:
@@ -200,46 +210,50 @@ def _status_for_exit_code(exit_code: int) -> str:
     return str(exit_code)
 
 
-def _run_and_record_mutant(
-    meta,
+def _run_mutant_trial(
     *,
     mutant_name: str,
     stats: dict,
     python: Path,
     root: Path,
-) -> bool:
+    fallback_tests: list[str],
+    escalation_tests: list[str],
+) -> tuple[int, float, bool]:
     tests = _tests_for_mutant(stats, mutant_name)
     if not tests:
-        meta.exit_code_by_key[mutant_name] = 33
-        meta.save()
-        return False
+        if fallback_tests:
+            tests = fallback_tests
+        else:
+            return 33, 0.0, False
     start = time.monotonic()
     exit_code = _run_mutant_pytest(python, root, mutant_name, tests)
-    if exit_code == 0:
-        full_suite = _full_suite_tests(root)
-        if full_suite:
-            exit_code = _run_mutant_pytest(python, root, mutant_name, full_suite)
-    meta.exit_code_by_key[mutant_name] = exit_code
-    meta.durations_by_key[mutant_name] = time.monotonic() - start
-    meta.save()
-    print(f"  {mutant_name}: {_status_for_exit_code(exit_code)} (exit {exit_code})")
-    return True
+    if exit_code == 0 and escalation_tests and tests != escalation_tests:
+        exit_code = _run_mutant_pytest(python, root, mutant_name, escalation_tests)
+    duration = time.monotonic() - start
+    return exit_code, duration, True
 
 
-def _execute_mutants_for_path(path, *, mutmut, SourceFileMutationData, rerun_codes: set[int | None], stats: dict, python: Path, root: Path) -> int:
-    if mutmut.config.should_ignore_for_mutation(path):
-        return 0
-    meta = SourceFileMutationData(path=path)
-    meta.load()
-    if not meta.exit_code_by_key:
-        return 0
-    tried = 0
-    for mutant_name, prior in list(meta.exit_code_by_key.items()):
-        if not _should_rerun_mutant(prior, rerun_codes):
+def _collect_mutation_tasks(
+    source_paths: list,
+    *,
+    mutmut,
+    SourceFileMutationData,
+    rerun_codes: set[int | None],
+) -> tuple[dict, list[tuple[Path, str]]]:
+    metas_by_path: dict = {}
+    tasks: list[tuple[Path, str]] = []
+    for path in source_paths:
+        if mutmut.config.should_ignore_for_mutation(path):
             continue
-        if _run_and_record_mutant(meta, mutant_name=mutant_name, stats=stats, python=python, root=root):
-            tried += 1
-    return tried
+        meta = SourceFileMutationData(path=path)
+        meta.load()
+        metas_by_path[path] = meta
+        if not meta.exit_code_by_key:
+            continue
+        for mutant_name, prior in list(meta.exit_code_by_key.items()):
+            if _should_rerun_mutant(prior, rerun_codes):
+                tasks.append((path, mutant_name))
+    return metas_by_path, tasks
 
 
 def _execute(root: Path, python: Path) -> int:
@@ -253,17 +267,57 @@ def _execute(root: Path, python: Path) -> int:
         return 1
     stats = _load_stats(root)
     rerun_codes = {None, -11, -9}
-    tried = 0
-    for path in walk_source_files():
-        tried += _execute_mutants_for_path(
-            path,
-            mutmut=mutmut,
-            SourceFileMutationData=SourceFileMutationData,
-            rerun_codes=rerun_codes,
+    fallback_tests = _full_suite_tests(root) if os.environ.get("MUTATION_FALLBACK_TESTS", "true").lower() == "true" else []
+    use_full_suite_escalation = os.environ.get("MUTATION_FULL_SUITE_ESCALATION", "true").lower() == "true"
+    escalation_tests = fallback_tests if use_full_suite_escalation else []
+    mutation_workers = _positive_int_from_env("MUTATION_WORKERS", 1)
+    source_paths = list(walk_source_files())
+    metas_by_path, tasks = _collect_mutation_tasks(
+        source_paths,
+        mutmut=mutmut,
+        SourceFileMutationData=SourceFileMutationData,
+        rerun_codes=rerun_codes,
+    )
+    if not tasks:
+        print("No mutants executed (empty meta or all already verdicted).")
+        return 1
+
+    def run_task(task: tuple[Path, str]) -> tuple[Path, str, int, float, bool]:
+        path, mutant_name = task
+        exit_code, duration, executed = _run_mutant_trial(
+            mutant_name=mutant_name,
             stats=stats,
             python=python,
             root=root,
+            fallback_tests=fallback_tests,
+            escalation_tests=escalation_tests,
         )
+        return path, mutant_name, exit_code, duration, executed
+
+    tried = 0
+    if mutation_workers > 1:
+        max_workers = min(mutation_workers, max(1, len(tasks)))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = [pool.submit(run_task, task) for task in tasks]
+            for future in as_completed(futures):
+                path, mutant_name, exit_code, duration, executed = future.result()
+                meta = metas_by_path[path]
+                meta.exit_code_by_key[mutant_name] = exit_code
+                meta.durations_by_key[mutant_name] = duration
+                meta.save()
+                print(f"  {mutant_name}: {_status_for_exit_code(exit_code)} (exit {exit_code})")
+                if executed:
+                    tried += 1
+    else:
+        for task in tasks:
+            path, mutant_name, exit_code, duration, executed = run_task(task)
+            meta = metas_by_path[path]
+            meta.exit_code_by_key[mutant_name] = exit_code
+            meta.durations_by_key[mutant_name] = duration
+            meta.save()
+            print(f"  {mutant_name}: {_status_for_exit_code(exit_code)} (exit {exit_code})")
+            if executed:
+                tried += 1
     if tried == 0:
         print("No mutants executed (empty meta or all already verdicted).")
         return 1
