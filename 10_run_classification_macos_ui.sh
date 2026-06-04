@@ -26,7 +26,7 @@ usage: ./10_run_classification_macos_ui.sh [--profile] [app args...]
 
   --profile  Log transaction-list load and first-render timings to stderr
              ([teller-ui-profile] lines). Start the classifier API separately, e.g.:
-             ./09_run_classification_api.py
+             ./05_run_classification_api.py
 
   Other arguments are forwarded to TransactionClassifier.
 EOF

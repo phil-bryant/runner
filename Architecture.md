@@ -34,8 +34,9 @@ source "${RUNNER_HOME}/config/runbook/<profile>.env"
 exec "${RUNNER_HOME}/<golden>.sh" "$@"
 ```
 
-[`src/scripts/generate_runbook_pointers.sh`](src/scripts/generate_runbook_pointers.sh) regenerates these
-pointers (and `tests/tNN_*` test pointers) for teller, matchy, mailcart, and the eggnest workspace root.
+These pointers are hand-authored per repo, not generated: each repo renumbers, re-prefixes, and selects its
+own lane subset, so there is no uniform scheme to generate. Add or rename a golden, then update the affected
+repo's pointer (and `tests/tNN_*` test pointer) by hand using the template above.
 
 ## Profile `.env` Mechanism
 
@@ -102,8 +103,8 @@ discovers `tests/t*.sh`, runs them in parallel, and writes telemetry.
 ### Traceability engine (`tests/py/traceability/`)
 
 `TraceabilityVerifier` (`verification.py`), `discovery.py`, `parsing.py`, and `cli.py` map
-`requirements/**/*-requirements.md` to source files and `#R###`-tagged tests. `00_verify_requirements_traceability.sh`
-prefers the target repo's `tests/py/traceability`, falling back to runner's copy.
+`requirements/**/*-requirements.md` to source files and `#R###`-tagged tests. The `tests/t04_run_requirements_traceability_tests.sh`
+lane prefers the target repo's `tests/py/traceability`, falling back to runner's copy.
 
 ### Data / schema layer (`src/sql/`)
 

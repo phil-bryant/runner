@@ -115,18 +115,18 @@ telemetry. `12_run_all_checks_parallel.sh` is the matchy-facing alias into the s
 
 Not every repo enables every lane; the profile and the repo's `tests/` pointers select which lanes run.
 
-## Regenerating pointers
+## Pointers are hand-authored
 
-When a golden script is added or renamed, regenerate the thin pointers across all consuming repos:
-
-```bash
-./src/scripts/generate_runbook_pointers.sh
-```
+The thin `NN_*.sh` / `rNN_*.sh` pointers in each consuming repo are hand-authored source, not generated.
+Each repo renumbers, re-prefixes, and selects its own lane subset (e.g. classy's `04_install_classifier_api_tls.sh`,
+teller's renumbered `05_deploy_database.sh`), so there is no uniform scheme to generate. When you add or rename a
+golden, update the affected repo's pointer by hand: set `RUNBOOK_REPO_ROOT`, source the repo profile, and `exec`
+the golden (see [`Architecture.md`](Architecture.md#thin-pointer-pattern) for the template).
 
 ## Requirements traceability
 
 `tests/py/traceability/` (`cli.py`, `discovery.py`, `parsing.py`, `verification.py`) maps
-`requirements/**/*-requirements.md` to source files and `#R###`-tagged tests. The `00`/`t04` lanes run it to
+`requirements/**/*-requirements.md` to source files and `#R###`-tagged tests. The `t04` lane runs it to
 keep requirements, code, and tests in sync.
 
 ## Constraints

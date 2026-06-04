@@ -2,17 +2,22 @@
 umask 007
 set -euo pipefail
 
+# Generic, knob-driven local-TLS installer golden. Per-repo NN_ pointers set the
+# API_TLS_* knobs from their profile and exec this wrapper. Replaces the previously
+# duplicated 05_install_classifier_api_tls.sh / 05_install_matchy_api_tls.sh goldens.
+
+#R001: Establish RUNNER_HOME / RUNBOOK_REPO_ROOT contract (TLS material lives outside the repo).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-#R001: Operate on the target repo (rNN_ pointer sets RUNBOOK_REPO_ROOT); default to self.
-SCRIPT_DIR="${RUNBOOK_REPO_ROOT:-$SCRIPT_DIR}"
-cd "$SCRIPT_DIR"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/runbook_common.sh"
 
-#R001: Install local TLS cert/key material for the Matchy-compatible Mailcart API.
-TLS_DIR="${MAILCART_MATCHY_TLS_DIR:-$HOME/.mailcart}"
-TLS_CERT_FILE="${MAILCART_MATCHY_TLS_CERT_FILE:-$TLS_DIR/matchy-localhost-cert.pem}"
-TLS_KEY_FILE="${MAILCART_MATCHY_TLS_KEY_FILE:-$TLS_DIR/matchy-localhost-key.pem}"
+#R005: Profile knobs select where TLS material is installed and how it is labelled.
+API_TLS_LABEL="${API_TLS_LABEL:-local API}"
+TLS_DIR="${API_TLS_DIR:-$HOME/.${RUNBOOK_REPO_NAME}}"
+TLS_CERT_FILE="${API_TLS_CERT_FILE:-$TLS_DIR/${RUNBOOK_REPO_NAME}-localhost-cert.pem}"
+TLS_KEY_FILE="${API_TLS_KEY_FILE:-$TLS_DIR/${RUNBOOK_REPO_NAME}-localhost-key.pem}"
 
-echo "▶ Checking local Matchy API TLS materials"
+echo "▶ Checking local ${API_TLS_LABEL} TLS materials"
 echo "  cert: ${TLS_CERT_FILE}"
 echo "  key : ${TLS_KEY_FILE}"
 
@@ -26,16 +31,17 @@ cert_is_self_signed() {
   [[ "$unique_count" == "1" ]]
 }
 
-#R005: Respect force-regenerate toggle for replacing existing TLS materials.
-force_regenerate="${MAILCART_MATCHY_TLS_FORCE_REGENERATE:-false}"
+#R010: Respect a force-regenerate toggle for replacing existing TLS materials.
+force_regenerate="${API_TLS_FORCE_REGENERATE:-false}"
 case "$force_regenerate" in
   1|true|TRUE|yes|YES|on|ON) force_regenerate=true ;;
   *) force_regenerate=false ;;
 esac
 
+#R010: Keep existing mkcert-generated cert decisions by default.
 if [[ -s "$TLS_CERT_FILE" && -s "$TLS_KEY_FILE" ]]; then
   if [[ "$force_regenerate" == "true" ]]; then
-    echo "ℹ️  Regenerating TLS cert/key (MAILCART_MATCHY_TLS_FORCE_REGENERATE=true)."
+    echo "ℹ️  Regenerating TLS cert/key (API_TLS_FORCE_REGENERATE=true)."
     rm -f "$TLS_CERT_FILE" "$TLS_KEY_FILE"
   elif cert_is_self_signed; then
     echo "ℹ️  Replacing legacy self-signed TLS cert/key with mkcert-trusted material."
@@ -46,9 +52,9 @@ if [[ -s "$TLS_CERT_FILE" && -s "$TLS_KEY_FILE" ]]; then
   fi
 fi
 
-echo "▶ Generating local Matchy API TLS materials"
+echo "▶ Generating local ${API_TLS_LABEL} TLS materials"
 
-#R010: Require mkcert to generate trusted localhost TLS cert/key files.
+#R015: Require mkcert for locally-trusted certificate generation.
 if ! command -v mkcert >/dev/null 2>&1; then
   echo "❌ mkcert is required but not available on PATH."
   echo "Run ./01_install_prerequisites.sh first, then rerun this script."
