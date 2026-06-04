@@ -97,7 +97,7 @@ is a locked golden; the generic knob-driven loader is `src/scripts/load_requirem
 ### Test lanes (`tests/`)
 
 `tests/tNN_*.sh` are thin lane wrappers that set flags and call shared engines. `src/scripts/run_unit_test_lanes.sh`
-toggles shell (Bats), pytest, SQL (pg_prove/pgTAP), Swift, and macOS UI lanes. `11_run_all_tests_parallel.sh`
+toggles shell (Bats), pytest, SQL (pg_prove/pgTAP), Swift, and macOS UI lanes. `07_run_all_tests_parallel.sh`
 discovers `tests/t*.sh`, runs them in parallel, and writes telemetry.
 
 ### Traceability engine (`tests/py/traceability/`)

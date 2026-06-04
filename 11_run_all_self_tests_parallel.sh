@@ -6,4 +6,4 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export RUNBOOK_REPO_ROOT="$SCRIPT_DIR"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/config/runbook/runner.env"
-exec "${SCRIPT_DIR}/11_run_all_tests_parallel.sh" "$@"
+exec "${SCRIPT_DIR}/07_run_all_tests_parallel.sh" "$@"

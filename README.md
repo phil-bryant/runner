@@ -30,11 +30,11 @@ dependency freshness, static security, requirements traceability, and shell unit
 ```bash
 cd runner
 ./02_create_venv.sh && source runner-venv/bin/activate && ./04_load_requirements.sh && deactivate
-./run_self_checks.sh             # 5 self lanes against runner, all green
+./11_run_all_self_tests_parallel.sh   # 5 self lanes against runner, all green
 ```
 
-`run_self_checks.sh` sets `RUNBOOK_REPO_ROOT` to runner, sources `config/runbook/runner.env`, and execs the
-golden `11_run_all_tests_parallel.sh`. Because the goldens live in `tests/tNN_*.sh`, the profile sets
+`11_run_all_self_tests_parallel.sh` sets `RUNBOOK_REPO_ROOT` to runner, sources `config/runbook/runner.env`, and execs the
+golden `07_run_all_tests_parallel.sh`. Because the goldens live in `tests/tNN_*.sh`, the profile sets
 `TEST_POINTER_PREFIX="r"` so discovery runs the thin `tests/rtNN_*.sh` self-pointers (rt01/rt02/rt03/rt04/rt07)
 instead of the shared goldens. The numbered/heavy DB/UI lanes are intentionally not part of the self-run.
 
@@ -63,8 +63,8 @@ cd ../teller
 ./02_create_venv.sh
 activate
 ./04_load_requirements.sh        # hash-pinned install (locked golden)
-./06_deploy_database.sh          # applies teller/src/sql DDL to the profile target
-./11_run_all_tests_parallel.sh   # discovers and runs teller/tests/tNN_*
+./05_deploy_database.sh          # applies teller/src/sql DDL to the profile target
+./06_run_all_tests_parallel.sh   # discovers and runs teller/tests/tNN_*
 ```
 
 ### matchy — checks
@@ -74,25 +74,24 @@ cd ../matchy
 ./02_create_venv.sh
 activate
 ./03_load_requirements.sh
-./05_run_unit_tests.sh
-./12_run_all_checks_parallel.sh  # parallel CI batch (excludes setup + integration entrypoints)
+./04_run_all_tests_parallel.sh   # parallel CI batch (excludes setup + integration entrypoints)
 ```
 
 ### eggnest — cross-repo engine e2e
 
 ```bash
 cd ..                            # eggnest workspace root
-./02_create_venv.sh
+./01_create_venv.sh
 activate
-./03_load_requirements.sh
-./05_run_e2e_tests.sh            # offline matching cases; --record drives a live AI recording
+./02_load_requirements.sh
+./03_run_e2e_tests.sh            # offline matching cases; --record drives a live AI recording
 ```
 
 ## Parallel orchestration
 
-`11_run_all_tests_parallel.sh` discovers `tests/t*.sh` under the target repo, runs them in parallel, writes
+`07_run_all_tests_parallel.sh` discovers `tests/t*.sh` under the target repo, runs them in parallel, writes
 per-script logs under the repo's artifacts directory, and emits completion-order PASS/FAIL lines plus quality
-telemetry. `12_run_all_checks_parallel.sh` is the matchy-facing alias into the same orchestrator.
+telemetry. `matchy/04_run_all_tests_parallel.sh` is the matchy-facing pointer into the same orchestrator.
 
 ## Test-lane catalog (`tests/tNN_*.sh`)
 

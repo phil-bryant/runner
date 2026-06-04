@@ -16,7 +16,7 @@ TARGET_RELIABILITY="${QUALITY_TARGET_RELIABILITY:-0.95}"
 #R010: Fail early with actionable guidance when historical telemetry is missing.
 if [[ ! -f "$HISTORY_PATH" ]]; then
   echo "❌ FAIL: missing quality history at ${HISTORY_PATH}" >&2
-  echo "Run ./11_run_all_tests_parallel.sh over time to build history." >&2
+  echo "Run ./07_run_all_tests_parallel.sh over time to build history." >&2
   exit 1
 fi
 

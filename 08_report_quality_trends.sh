@@ -15,7 +15,7 @@ HISTORY_PATH="${TELEMETRY_DIR}/quality-history.ndjson"
 #R010: Fail early with actionable guidance when trend telemetry is missing.
 if [[ ! -f "$TREND_PATH" ]]; then
   echo "❌ FAIL: missing trend file at ${TREND_PATH}" >&2
-  echo "Run ./11_run_all_tests_parallel.sh first to generate telemetry." >&2
+  echo "Run ./07_run_all_tests_parallel.sh first to generate telemetry." >&2
   exit 1
 fi
 
