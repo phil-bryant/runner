@@ -128,7 +128,7 @@ else
   PREFLIGHT_EXIT=$?
   set -e
   if [ "$PREFLIGHT_EXIT" -ne 0 ]; then
-    echo "Unit tests failed. Fix tests first with: ./tests/t08_run_python_unit_tests.sh"
+    echo "Unit tests failed. Fix tests first with: ./tests/t06_run_python_unit_tests.sh"
     cat "$PREFLIGHT_OUTPUT"
     exit 1
   fi

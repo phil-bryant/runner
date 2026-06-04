@@ -8,8 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/src/scripts/runbook_common.sh"
 runbook_cd_repo
-#R005: rtNN_ pointer prefix (empty = run discovered tNN_ scripts/pointers directly).
-TEST_POINTER_PREFIX="${TEST_POINTER_PREFIX:-}"
+#R005: Optional self-run lane allow-list (space/comma separated lane basenames or stems).
+# Empty = run every discovered tNN_ lane. Used by the runner self-run to select its applicable lanes.
+RUN_LANE_ALLOWLIST="${RUN_LANE_ALLOWLIST:-}"
 
 # Keep runtime caches out of the repository root.
 # shellcheck disable=SC1091
@@ -63,9 +64,6 @@ SELF_SCRIPT_BASENAME="$(basename "${BASH_SOURCE[0]}")"
 CHECKS_DIR="./tests"
 CHECKS=()
 discover_glob="${CHECKS_DIR}/t*.sh"
-if [[ -n "$TEST_POINTER_PREFIX" ]]; then
-  discover_glob="${CHECKS_DIR}/${TEST_POINTER_PREFIX}t*.sh"
-fi
 for candidate in $discover_glob; do
   [[ -e "$candidate" ]] || continue
   script="$(basename "$candidate")"
@@ -73,9 +71,6 @@ for candidate in $discover_glob; do
     continue
   fi
   if [[ "$script" =~ (^|_)tests?(_|\.sh$) ]]; then
-    if [[ -n "$TEST_POINTER_PREFIX" && "$script" == "${TEST_POINTER_PREFIX}"* ]]; then
-      script="${script#"${TEST_POINTER_PREFIX}"}"
-    fi
     CHECKS+=("$script")
   fi
 done
@@ -85,6 +80,18 @@ if [[ "${#CHECKS[@]}" -gt 0 ]]; then
     [[ -n "$line" ]] && sorted_checks+=("$line")
   done < <(printf '%s\n' "${CHECKS[@]}" | sort -V)
   CHECKS=("${sorted_checks[@]}")
+fi
+
+#R005: Restrict discovery to an explicit lane allow-list when provided (matches basename or stem).
+if [[ -n "$RUN_LANE_ALLOWLIST" ]]; then
+  allow_normalized=" ${RUN_LANE_ALLOWLIST//,/ } "
+  allowed_checks=()
+  for candidate_script in "${CHECKS[@]}"; do
+    if [[ "$allow_normalized" == *" ${candidate_script} "* || "$allow_normalized" == *" ${candidate_script%.sh} "* ]]; then
+      allowed_checks+=("$candidate_script")
+    fi
+  done
+  CHECKS=("${allowed_checks[@]+"${allowed_checks[@]}"}")
 fi
 
 if [[ "${#CHECKS[@]}" -eq 0 ]]; then
@@ -234,7 +241,7 @@ terminate_child_checks() {
   for script in "${CHECKS[@]}"; do
     while IFS= read -r match_pid; do
       kill_process_tree TERM "$match_pid"
-    done < <(pgrep -f "${CHECKS_DIR}/${TEST_POINTER_PREFIX}${script}" 2>/dev/null || true)
+    done < <(pgrep -f "${CHECKS_DIR}/${script}" 2>/dev/null || true)
   done
 
   sleep 1
@@ -247,7 +254,7 @@ terminate_child_checks() {
   for script in "${CHECKS[@]}"; do
     while IFS= read -r match_pid; do
       kill_process_tree KILL "$match_pid"
-    done < <(pgrep -f "${CHECKS_DIR}/${TEST_POINTER_PREFIX}${script}" 2>/dev/null || true)
+    done < <(pgrep -f "${CHECKS_DIR}/${script}" 2>/dev/null || true)
   done
 }
 
@@ -348,8 +355,8 @@ print_failure_excerpt() {
 }
 
 for script in "${CHECKS[@]}"; do
-  if [[ ! -f "${CHECKS_DIR}/${TEST_POINTER_PREFIX}${script}" ]]; then
-    echo "❌ FAIL: expected check script not found: ${CHECKS_DIR}/${TEST_POINTER_PREFIX}${script}" >&2
+  if [[ ! -f "${CHECKS_DIR}/${script}" ]]; then
+    echo "❌ FAIL: expected check script not found: ${CHECKS_DIR}/${script}" >&2
     exit 1
   fi
 done
@@ -367,7 +374,7 @@ run_lane_worker() {
   local script="$1"
   set +e
   unset VIRTUAL_ENV
-  local script_path="${CHECKS_DIR}/${TEST_POINTER_PREFIX}${script}"
+  local script_path="${CHECKS_DIR}/${script}"
   local log="${REPORT_DIR}/${script%.sh}.log"
   # Keep lanes parallel while isolating shared resources.
   local lane_api_url="${PARALLEL_CLASSIFIER_API_URL:-https://127.0.0.1:${PARALLEL_CLASSIFIER_API_PORT:-8787}}"
@@ -377,17 +384,17 @@ run_lane_worker() {
   local crash_check_delay="${PARALLEL_CRASH_CHECK_DELAY_SECONDS:-0}"
   local db_lock_dir="${DB_LANE_LOCK_DIR:-${SCRIPT_DIR}/.parallel-db-tests.lock}"
   local exit_code=0
-  if [[ "$script" == "t15_verify_macos_crash_test.sh" && "$crash_check_delay" =~ ^[0-9]+$ && "$crash_check_delay" -gt 0 ]]; then
+  if [[ "$script" == *verify_macos_crash_test.sh && "$crash_check_delay" =~ ^[0-9]+$ && "$crash_check_delay" -gt 0 ]]; then
     sleep "$crash_check_delay"
   fi
   run_lane() {
-    if [[ "$script" == "t05_deploy_database_verification_test.sh" || "$script" == "t06_run_sql_unit_tests.sh" || "$script" == "t16_classification_persistence_verification_test.sh" || "$script" == "t12_run_dynamic_security_tests.sh" ]]; then
-      if [[ "$script" == "t16_classification_persistence_verification_test.sh" ]]; then
+    if [[ "$script" == *deploy_database_verification_test.sh || "$script" == *run_sql_unit_tests.sh || "$script" == *classification_persistence_verification_test.sh || "$script" == *run_dynamic_security_tests.sh ]]; then
+      if [[ "$script" == *classification_persistence_verification_test.sh ]]; then
         TELLER_DB_HOST="${TELLER_DB_HOST:-127.0.0.1}" \
         TELLER_DB_SSLMODE="${TELLER_DB_SSLMODE:-require}" \
         TELLER_CLASSIFIER_API_URL="${TELLER_CLASSIFIER_API_URL:-${lane_api_url}}" \
           "${script_path}" >"${log}" 2>&1
-      elif [[ "$script" == "t12_run_dynamic_security_tests.sh" ]]; then
+      elif [[ "$script" == *run_dynamic_security_tests.sh ]]; then
         TELLER_DB_HOST="${TELLER_DB_HOST:-127.0.0.1}" \
         TELLER_DB_SSLMODE="${TELLER_DB_SSLMODE:-require}" \
         DAST_BASE_PORT="${DAST_BASE_PORT:-${lane_dast_base_port}}" \
@@ -404,7 +411,7 @@ run_lane_worker() {
     fi
   }
 
-  if [[ "$script" == "t05_deploy_database_verification_test.sh" || "$script" == "t06_run_sql_unit_tests.sh" || "$script" == "t16_classification_persistence_verification_test.sh" || "$script" == "t12_run_dynamic_security_tests.sh" ]]; then
+  if [[ "$script" == *deploy_database_verification_test.sh || "$script" == *run_sql_unit_tests.sh || "$script" == *classification_persistence_verification_test.sh || "$script" == *run_dynamic_security_tests.sh ]]; then
     local lock_wait_timeout="${PARALLEL_DB_LOCK_WAIT_TIMEOUT_SECONDS:-180}"
     local lock_wait_start
     lock_wait_start="$(date +%s)"
@@ -605,7 +612,7 @@ lane_status = {entry["lane"]: 1.0 if entry["status"] == "pass" else 0.0 for entr
 DEFAULT_LANE_GROUPS = {
     "behavioral_coverage": (
         "t05_deploy_database_verification_test",
-        "t13_run_teller_api_smoke_tests",
+        "t12_run_teller_api_smoke_tests",
     ),
     "effectiveness_quality": (
         "t00_run_code_quality_tests",
@@ -613,15 +620,15 @@ DEFAULT_LANE_GROUPS = {
         "t07_run_shell_unit_tests",
         "t08_run_python_unit_tests",
         "t09_run_mutation_tests",
-        "t11_run_fuzz_tests",
+        "t10_run_fuzz_tests",
     ),
     "security_runtime_quality": (
         "t01_run_av_test",
         "t02_run_dependency_freshness_tests",
         "t03_run_static_security_tests",
-        "t12_run_dynamic_security_tests",
-        "t17_run_teller_live_canary_test",
-        "t18_verify_filevault_encryption_test",
+        "t11_run_dynamic_security_tests",
+        "t13_run_teller_live_canary_test",
+        "t14_verify_filevault_encryption_test",
     ),
 }
 _groups_env = os.environ.get("QUALITY_LANE_GROUPS", "").strip()

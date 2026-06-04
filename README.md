@@ -8,9 +8,9 @@ For the design (dual-root model, layering, data flow) see [`Architecture.md`](Ar
 
 ## You run it from the sibling repo, not from here
 
-You almost never invoke runner directly. Each consuming repo keeps thin `NN_*.sh` (or `rNN_*.sh`) pointers that
-set `RUNBOOK_REPO_ROOT`, source the repo's profile, and exec the matching golden in runner. Run the numbered
-script inside the target repo and it operates on that repo's venv, sources, and tests.
+You almost never invoke runner directly. Each consuming repo keeps thin `NN_*.sh` operator pointers and
+`tests/tNN_*.sh` test pointers that set `RUNBOOK_REPO_ROOT`, source the repo's profile, and exec the matching
+golden in runner. Run the numbered script inside the target repo and it operates on that repo's venv, sources, and tests.
 
 ```bash
 cd ../teller
@@ -34,9 +34,10 @@ cd runner
 ```
 
 `11_run_all_self_tests_parallel.sh` sets `RUNBOOK_REPO_ROOT` to runner, sources `config/runbook/runner.env`, and execs the
-golden `07_run_all_tests_parallel.sh`. Because the goldens live in `tests/tNN_*.sh`, the profile sets
-`TEST_POINTER_PREFIX="r"` so discovery runs the thin `tests/rtNN_*.sh` self-pointers (rt01/rt02/rt03/rt04/rt07)
-instead of the shared goldens. The numbered/heavy DB/UI lanes are intentionally not part of the self-run.
+golden `07_run_all_tests_parallel.sh`. The orchestrator discovers runner's own `tests/tNN_*.sh` goldens and runs only the
+lanes named in `RUN_LANE_ALLOWLIST` (`t01` AV, `t02` dependency freshness, `t03` static security, `t04` requirements
+traceability, `t05` shell unit). The heavier DB/UI/DAST lanes are intentionally not part of the self-run. There are no
+`rtNN_*.sh` self-pointers anymore — the engine runs its goldens directly under `RUNBOOK_REPO_ROOT=runner`.
 
 ## Profiles
 
@@ -95,6 +96,8 @@ telemetry. `matchy/04_run_all_tests_parallel.sh` is the matchy-facing pointer in
 
 ## Test-lane catalog (`tests/tNN_*.sh`)
 
+The runner holds only the lanes that are genuinely shared across repos, renumbered contiguous `t00`-`t10`:
+
 | Lane | Focus |
 |------|-------|
 | `t00` | Code quality |
@@ -102,22 +105,25 @@ telemetry. `matchy/04_run_all_tests_parallel.sh` is the matchy-facing pointer in
 | `t02` | Dependency freshness |
 | `t03` | Static security (SAST) |
 | `t04` | Requirements traceability |
-| `t06` | SQL unit tests (pgTAP) |
-| `t07` | Shell unit tests (Bats) |
-| `t08` | Python unit tests (pytest) |
-| `t09` | Mutation tests (mutmut) |
-| `t11` | Fuzz / property tests (Hypothesis) |
-| `t12` | Dynamic security (DAST) |
-| `t13` | API smoke tests |
-| `t17` | Live canary |
-| `t18` | FileVault encryption verification |
+| `t05` | Shell unit tests (Bats) |
+| `t06` | Python unit tests (pytest) |
+| `t07` | Mutation tests (mutmut) |
+| `t08` | Fuzz / property tests (Hypothesis) |
+| `t09` | Dynamic security (DAST) |
+| `t10` | FileVault encryption verification |
 
-Not every repo enables every lane; the profile and the repo's `tests/` pointers select which lanes run.
+Repo-specific test lanes are not shared goldens; they live as self-contained lanes inside their owning repo:
+
+- **teller**: DB-deploy verification, SQL/pgTAP unit, Teller API smoke, Teller live canary.
+- **classy**: Swift unit, macOS UI regression, macOS crash verification, classification persistence.
+
+Not every repo enables every shared lane; the profile and the repo's `tests/` pointers select which lanes run.
+Each consuming repo numbers its own `tests/tNN_*.sh` contiguously (teller/classy `t00`-`t14`, matchy/mailcart `t00`-`t10`).
 
 ## Pointers are hand-authored
 
-The thin `NN_*.sh` / `rNN_*.sh` pointers in each consuming repo are hand-authored source, not generated.
-Each repo renumbers, re-prefixes, and selects its own lane subset (e.g. classy's `04_install_classifier_api_tls.sh`,
+The thin `NN_*.sh` operator pointers and `tests/tNN_*.sh` test pointers in each consuming repo are hand-authored source,
+not generated. Each repo renumbers and selects its own lane subset (e.g. classy's `04_install_classifier_api_tls.sh`,
 teller's renumbered `05_deploy_database.sh`), so there is no uniform scheme to generate. When you add or rename a
 golden, update the affected repo's pointer by hand: set `RUNBOOK_REPO_ROOT`, source the repo profile, and `exec`
 the golden (see [`Architecture.md`](Architecture.md#thin-pointer-pattern) for the template).

@@ -56,7 +56,7 @@ goldens read before executing; they are not secrets (secrets are referenced by 1
 ```mermaid
 flowchart TB
   subgraph pointers [Sibling repo thin pointers]
-    T[teller NN_/rNN_]
+    T[teller NN_/tNN_]
     M[matchy NN_]
     MC[mailcart NN_]
     E[eggnest 02/03/05]

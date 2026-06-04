@@ -106,7 +106,7 @@ def discover_test_files_for_requirements(
     if requirements_file.as_posix().startswith((repo_root / "requirements/macos-ui/").as_posix()):
         collect_swift_lane("src/macos-ui/UITests", "ui")
 
-    if requirements_file.name == "t14_run_macos_ui_regression_tests-requirements.md":
+    if requirements_file.name == "t11_run_macos_ui_regression_tests-requirements.md":
         collect_swift_lane("src/macos-ui/UITests", "ui")
 
     return sorted(path.as_posix() for path in default_results), sorted(path.as_posix() for path in ui_results)

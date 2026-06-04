@@ -34,7 +34,7 @@ security_init_repo_root() {
     runner_home="$(cd "${script_dir}/.." && pwd)"
   fi
   SECURITY_RUNNER_HOME="${RUNNER_HOME:-$runner_home}"
-  #R005: Target repo to scan (an rNN_/rtNN_ pointer sets RUNBOOK_REPO_ROOT); default to engine home.
+  #R005: Target repo to scan (an NN_/tNN_ pointer sets RUNBOOK_REPO_ROOT); default to engine home.
   local repo_root="${RUNBOOK_REPO_ROOT:-$SECURITY_RUNNER_HOME}"
   repo_root="$(cd "$repo_root" && pwd)"
   cd "$repo_root"

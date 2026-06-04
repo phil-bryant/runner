@@ -476,5 +476,11 @@ fi
 
 if [[ "$RUN_MACOS_UI_REGRESSION_TESTS" == "true" ]]; then
   echo "▶ Running macOS UI regression test lane..."
-  ./tests/t14_run_macos_ui_regression_tests.sh
+  # Resolve the lane by content so repo renumbers/relocations stay safe.
+  ui_regression_lane="$(ls ./tests/t*_run_macos_ui_regression_tests.sh 2>/dev/null | sort -V | head -n1)"
+  if [[ -z "$ui_regression_lane" ]]; then
+    echo "❌ macOS UI regression lane (tests/t*_run_macos_ui_regression_tests.sh) not found." >&2
+    exit 1
+  fi
+  "$ui_regression_lane"
 fi

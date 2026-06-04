@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runner self-run pointer: runs runner's own applicable lanes (tests/rtNN_) against runner itself.
+# Runner self-run pointer: runs runner's own applicable lanes (RUN_LANE_ALLOWLIST in runner.env) against runner itself.
 umask 007
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
