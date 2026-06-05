@@ -323,14 +323,19 @@ read_classifier_write_token() {
   # (DAST_REQUIRE_WRITE_TOKEN=false) use a benign placeholder header instead of requiring a secret.
   local write_token="${TELLER_CLASSIFIER_WRITE_TOKEN:-}"
   if [[ -z "$write_token" && "${DAST_REQUIRE_WRITE_TOKEN:-true}" == "true" ]]; then
-    write_token="$(rb_read_1psa_item "$WRITE_TOKEN_PSA_ITEM")"
+    # Tolerate 1psa failures (e.g. rate limiting); fall through to the ephemeral DAST token below.
+    write_token="$(rb_read_1psa_item "$WRITE_TOKEN_PSA_ITEM" || true)"
   fi
   if [[ -z "$write_token" ]]; then
     if [[ "${DAST_REQUIRE_WRITE_TOKEN:-true}" != "true" ]]; then
       write_token="dast-unauthenticated"
     else
-      echo "❌ Failed to read classifier write token from 1psa item: ${WRITE_TOKEN_PSA_ITEM}"
-      exit 1
+      # DAST only needs a shared secret between this lane and the app under test. When neither an env
+      # token nor 1psa is available (e.g. 1psa is rate limited), synthesize an ephemeral token so the
+      # scan still runs without manual env setup; the same value is handed to the app via its
+      # CLASSY_WRITE_TOKEN env fallback and to the scanner header, so authed routes stay exercised.
+      write_token="dast-ephemeral-$(date +%s)-$$-${RANDOM}"
+      echo "⚠️  Classifier write token unavailable from env or 1psa item ${WRITE_TOKEN_PSA_ITEM}; using an ephemeral DAST token for this run." >&2
     fi
   fi
   printf '%s' "$write_token"
@@ -1109,7 +1114,12 @@ PY
       echo "▶ DAST Mailcart base URL: ${MAILCART_SERVICE_BASE_URL}"
     fi
     echo "▶ Starting local classification API for Dynamic Application Security Testing (DAST) at ${base_url}"
+    # Hand the already-resolved DAST token to the app via its env-token fallback so the spawned API
+    # reuses it instead of making its own 1psa lookup (which fails when 1psa is unavailable/rate
+    # limited). DAST is a test workflow, exactly the case the env-token fallback guard is intended for;
+    # apps that do not read these vars (e.g. mailcart/matchy) simply ignore them.
     TELLER_CLASSIFIER_WRITE_TOKEN="$dast_write_token" \
+      CLASSY_ALLOW_ENV_WRITE_TOKEN="true" CLASSY_WRITE_TOKEN="$dast_write_token" \
       TELLER_CLASSIFIER_API_HOST="$base_host" TELLER_CLASSIFIER_API_PORT="$base_port" \
       CLASSIFICATION_API_HOST="$base_host" CLASSIFICATION_API_PORT="$base_port" \
       CLASSY_API_HOST="$base_host" CLASSY_API_PORT="$base_port" \
