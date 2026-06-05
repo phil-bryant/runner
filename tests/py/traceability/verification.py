@@ -7,6 +7,7 @@ from .discovery import (
     discover_test_files_for_requirements,
     extract_source_files_from_analogous_tree,
     extract_source_files_from_requirements_path,
+    list_shell_test_roots,
     list_repository_software_files,
     list_requirements_files,
 )
@@ -312,9 +313,11 @@ class TraceabilityVerifier:
                 if not self._is_deprecated_path(script_rel):
                     num = script_file.name.split("_", 1)[0]
                     script_pairs.append((num, script_rel))
-        for req_file in self.repo_root.glob("requirements/[0-9][0-9]_*-requirements.md"):
-            num = req_file.name.split("_", 1)[0]
-            req_pairs.append((num, self._rel(req_file)))
+        for req_file in list_requirements_files(self.repo_root):
+            name = req_file.name
+            if len(name) >= 2 and name[:2].isdigit() and "_" in name and name.endswith("-requirements.md"):
+                num = name.split("_", 1)[0]
+                req_pairs.append((num, self._rel(req_file)))
         req_nums = {num for num, _ in req_pairs}
         missing = [script_file for num, script_file in sorted(set(script_pairs)) if num not in req_nums]
         if not missing:
@@ -326,7 +329,9 @@ class TraceabilityVerifier:
 
     def verify_numbered_requirement_scope_alignment(self) -> bool:
         failures: list[str] = []
-        for req_file in self.repo_root.glob("requirements/[0-9][0-9]_*-requirements.md"):
+        for req_file in list_requirements_files(self.repo_root):
+            if not (len(req_file.name) >= 2 and req_file.name[:2].isdigit() and "_" in req_file.name):
+                continue
             req_num = req_file.name.split("_", 1)[0]
             source_list = extract_source_files_from_requirements_path(req_file)
             found_numbered = False
@@ -360,13 +365,20 @@ class TraceabilityVerifier:
             )
             return True
         missing = []
+        shell_test_roots = list_shell_test_roots(self.repo_root)
         for pattern in ("tests/[0-9][0-9]_*.sh", "tests/[0-9][0-9]_*.py", "[0-9][0-9]_*.sh", "[0-9][0-9]_*.py"):
             for script_file in self.repo_root.glob(pattern):
                 script_rel = self._rel(script_file)
                 if not self._is_deprecated_path(script_rel):
                     stem = script_file.stem
-                    if not (self.repo_root / f"tests/sh/{stem}.bats").is_file():
-                        missing.append(f"{script_rel} (expected tests/sh/{stem}.bats)")
+                    has_companion = False
+                    for root in shell_test_roots:
+                        if (root / f"{stem}.bats").is_file():
+                            has_companion = True
+                            break
+                    if not has_companion:
+                        expected_roots = ", ".join(path.as_posix() for path in shell_test_roots) or "tests/sh"
+                        missing.append(f"{script_rel} (expected {stem}.bats in one of: {expected_roots})")
         if not missing:
             print("✅ PASS: numbered script test coverage complete (every numbered script has tests/sh/NN_*.bats).")
             return True
@@ -415,7 +427,9 @@ class TraceabilityVerifier:
         runner_root = self._discover_runner_root()
         if runner_root is None:
             return covered
-        for req_file in list_requirements_files(runner_root):
+        # Always use runner's canonical requirements tree for shared-coverage
+        # deduction, regardless of active repo-specific requirements roots.
+        for req_file in (runner_root / "requirements").rglob("*-requirements.md"):
             source_list = extract_source_files_from_requirements_path(req_file)
             if not source_list:
                 source_list = extract_source_files_from_analogous_tree(req_file, runner_root)

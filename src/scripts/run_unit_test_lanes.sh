@@ -156,6 +156,31 @@ run_single_bats_file() {
   fi
 }
 
+collect_bats_files() {
+  local roots_spec normalized root candidate
+  local seen=$'\n'
+  bats_files=()
+  roots_spec="${SHELL_BATS_ROOTS:-./tests/sh}"
+  normalized="${roots_spec//:/ }"
+  normalized="${normalized//,/ }"
+  for root in $normalized; do
+    [[ -n "$root" ]] || continue
+    if [[ "$root" != /* ]]; then
+      root="${REPO_ROOT}/${root#./}"
+    fi
+    [[ -d "$root" ]] || continue
+    shopt -s nullglob
+    for candidate in "$root"/*.bats; do
+      case "$seen" in
+        *$'\n'"$candidate"$'\n'*) continue ;;
+      esac
+      seen+="${candidate}"$'\n'
+      bats_files+=("$candidate")
+    done
+    shopt -u nullglob
+  done
+}
+
 swiftpm_state_looks_stale() {
   local output_text="$1"
   [[ "$output_text" == *"cannot be accessed"* && "$output_text" == *".build/"* ]] && return 0
@@ -200,63 +225,57 @@ if [[ -d "./${VENV_NAME}" ]] && [[ -f "./${VENV_NAME}/bin/activate" ]]; then
 fi
 
 if [[ "$RUN_SHELL_TESTS" == "true" ]]; then
-  if [[ -d "./tests/sh" ]]; then
-    if ! command -v bats >/dev/null 2>&1; then
-      echo "❌ bats is required for shell unit tests. Install bats-core and rerun."
-      exit 1
-    fi
-    shopt -s nullglob
-    bats_files=(./tests/sh/*.bats)
-    shopt -u nullglob
-    if [[ "${#bats_files[@]}" -eq 0 ]]; then
-      echo "ℹ️  Skipping shell unit tests: no *.bats files found in ./tests/sh."
-    else
-      resolve_bats_jobs
-      if [[ "$BATS_JOBS_RESOLVED" -le 1 || "${#bats_files[@]}" -le 1 ]]; then
-        echo "▶ Running shell unit tests (bats, serial)..."
-        for bats_file in "${bats_files[@]}"; do
-          run_single_bats_file "$bats_file"
-        done
-      else
-        echo "▶ Running shell unit tests (bats, parallel by file; jobs=${BATS_JOBS_RESOLVED})..."
-        printf '%s\0' "${bats_files[@]}" | \
-          BATS_FILTER="$BATS_FILTER" \
-          xargs -0 -P "$BATS_JOBS_RESOLVED" -I {} bash -c '
-            set -euo pipefail
-            file="$1"
-            bats_env_unsets=(
-              -u TELLER_DB_PASSWORD
-              -u DB_PASSWORD
-              -u DB_DIALECT
-              -u PROFILE_NAME
-              -u PROFILE_TARGET
-              -u PG_HOST
-              -u PG_PORT
-              -u PG_DBNAME
-              -u PG_USER
-              -u PG_SSLMODE
-              -u PG_SEARCH_PATH
-              -u PG_RUNTIME_ROLE
-              -u PG_ONEPSA_ITEM
-              -u SQLITE_PATH
-              -u SQLCIPHER_KEY
-              -u TELLER_DB_HOST
-              -u TELLER_DB_PORT
-              -u TELLER_DB_NAME
-              -u TELLER_DB_USER
-              -u TELLER_DB_SQLITE_PATH
-              -u TELLER_DB_SQLCIPHER_KEY
-            )
-            if [[ -n "${BATS_FILTER:-}" ]]; then
-              env "${bats_env_unsets[@]}" bats --filter "$BATS_FILTER" "$file"
-            else
-              env "${bats_env_unsets[@]}" bats "$file"
-            fi
-          ' _ {}
-      fi
-    fi
+  if ! command -v bats >/dev/null 2>&1; then
+    echo "❌ bats is required for shell unit tests. Install bats-core and rerun."
+    exit 1
+  fi
+  collect_bats_files
+  if [[ "${#bats_files[@]}" -eq 0 ]]; then
+    echo "ℹ️  Skipping shell unit tests: no *.bats files found in SHELL_BATS_ROOTS='${SHELL_BATS_ROOTS:-./tests/sh}'."
   else
-    echo "ℹ️  Skipping shell unit tests: ./tests/sh not found."
+    resolve_bats_jobs
+    if [[ "$BATS_JOBS_RESOLVED" -le 1 || "${#bats_files[@]}" -le 1 ]]; then
+      echo "▶ Running shell unit tests (bats, serial)..."
+      for bats_file in "${bats_files[@]}"; do
+        run_single_bats_file "$bats_file"
+      done
+    else
+      echo "▶ Running shell unit tests (bats, parallel by file; jobs=${BATS_JOBS_RESOLVED})..."
+      printf '%s\0' "${bats_files[@]}" | \
+        BATS_FILTER="$BATS_FILTER" \
+        xargs -0 -P "$BATS_JOBS_RESOLVED" -I {} bash -c '
+          set -euo pipefail
+          file="$1"
+          bats_env_unsets=(
+            -u TELLER_DB_PASSWORD
+            -u DB_PASSWORD
+            -u DB_DIALECT
+            -u PROFILE_NAME
+            -u PROFILE_TARGET
+            -u PG_HOST
+            -u PG_PORT
+            -u PG_DBNAME
+            -u PG_USER
+            -u PG_SSLMODE
+            -u PG_SEARCH_PATH
+            -u PG_RUNTIME_ROLE
+            -u PG_ONEPSA_ITEM
+            -u SQLITE_PATH
+            -u SQLCIPHER_KEY
+            -u TELLER_DB_HOST
+            -u TELLER_DB_PORT
+            -u TELLER_DB_NAME
+            -u TELLER_DB_USER
+            -u TELLER_DB_SQLITE_PATH
+            -u TELLER_DB_SQLCIPHER_KEY
+          )
+          if [[ -n "${BATS_FILTER:-}" ]]; then
+            env "${bats_env_unsets[@]}" bats --filter "$BATS_FILTER" "$file"
+          else
+            env "${bats_env_unsets[@]}" bats "$file"
+          fi
+        ' _ {}
+    fi
   fi
 fi
 

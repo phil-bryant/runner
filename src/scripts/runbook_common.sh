@@ -28,6 +28,15 @@ RUNBOOK_REPO_NAME="${RUNBOOK_REPO_NAME:-$(basename "$RUNBOOK_REPO_ROOT")}"
 VENV_NAME="${VENV_NAME:-${RUNBOOK_REPO_NAME}-venv}"
 export RUNBOOK_REPO_NAME VENV_NAME
 
+#R012: Shared traceability/test asset roots can live in runner while execution
+# still targets RUNBOOK_REPO_ROOT scripts.
+TRACEABILITY_REQUIREMENTS_ROOTS="${TRACEABILITY_REQUIREMENTS_ROOTS:-${RUNBOOK_REPO_ROOT}/requirements}"
+TRACEABILITY_TEST_ROOTS="${TRACEABILITY_TEST_ROOTS:-${RUNBOOK_REPO_ROOT}/tests/sh}"
+#R013: Shell lane discovery defaults to the same roots traceability uses for
+# requirements-to-test mapping.
+SHELL_BATS_ROOTS="${SHELL_BATS_ROOTS:-${TRACEABILITY_TEST_ROOTS}}"
+export TRACEABILITY_REQUIREMENTS_ROOTS TRACEABILITY_TEST_ROOTS SHELL_BATS_ROOTS
+
 #R015: Operate from the target repository root by default.
 runbook_cd_repo() {
   cd "$RUNBOOK_REPO_ROOT"

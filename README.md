@@ -49,6 +49,11 @@ traceability, `t05` shell unit). The heavier DB/UI/DAST lanes are intentionally 
 profile before exec; profiles set knobs (prereq mode, venv policy, pip bootstrap, orchestrator mode, DAST
 target) but never secrets (secrets are referenced by 1psa item name).
 
+Pointer-contract assets are centralized in runner and loaded via profile roots:
+
+- `TRACEABILITY_REQUIREMENTS_ROOTS` -> includes `runner/shared/requirements/pointers/<repo>`
+- `TRACEABILITY_TEST_ROOTS` / `SHELL_BATS_ROOTS` -> include `runner/shared/tests/sh/pointers/<repo>`
+
 | Repo | Profile sourced |
 |------|-----------------|
 | teller | `config/runbook/teller.env` |
@@ -135,8 +140,13 @@ the golden (see [`Architecture.md`](Architecture.md#thin-pointer-pattern) for th
 ## Requirements traceability
 
 `tests/py/traceability/` (`cli.py`, `discovery.py`, `parsing.py`, `verification.py`) maps
-`requirements/**/*-requirements.md` to source files and `#R###`-tagged tests. The `t04` lane runs it to
-keep requirements, code, and tests in sync.
+`requirements/**/*-requirements.md` (plus any roots in `TRACEABILITY_REQUIREMENTS_ROOTS`) to source files and
+`#R###`-tagged tests. Shared wrapper requirements and their companion bats tests now live under:
+
+- `shared/requirements/pointers/<repo>/*.md`
+- `shared/tests/sh/pointers/<repo>/*.bats`
+
+The `t04` lane runs this mapping so requirements, code, and tests stay in sync without per-repo wrapper copies.
 
 ## Constraints
 

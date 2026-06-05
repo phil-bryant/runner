@@ -246,6 +246,18 @@ raise SystemExit(1)
 PY
 }
 
+resolve_first_existing_file() {
+  local candidate=""
+  for candidate in "$@"; do
+    [[ -n "$candidate" ]] || continue
+    if [[ -f "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 run_zap_quick_scan() {
   local zap_cli_cmd="$1"
   local zap_home_dir="$2"
@@ -867,7 +879,15 @@ PY
 
   # Ensure Python/requests-based tooling trusts the local classifier cert when DAST targets
   # loopback HTTPS. This keeps Schemathesis + fixture prep compatible with HTTPS-only lanes.
-  local classifier_tls_cert="${TELLER_CLASSIFIER_TLS_CERT_FILE:-$HOME/.teller/classifier-localhost-cert.pem}"
+  local classifier_tls_cert=""
+  classifier_tls_cert="$(
+    resolve_first_existing_file \
+      "${CLASSY_TLS_CERT_FILE:-}" \
+      "${API_TLS_CERT_FILE:-}" \
+      "${TELLER_CLASSIFIER_TLS_CERT_FILE:-}" \
+      "$HOME/.classy/classifier-localhost-cert.pem" \
+      "$HOME/.teller/classifier-localhost-cert.pem"
+  )" || classifier_tls_cert=""
   if [[ "$base_url" == https://127.0.0.1:* || "$base_url" == https://localhost:* ]]; then
     if [[ -f "$classifier_tls_cert" ]]; then
       export SSL_CERT_FILE="$classifier_tls_cert"
@@ -985,8 +1005,24 @@ PY
         mailcart_port="$resolved_mailcart_port"
         echo "⚠️  DAST Mailcart stub port collided with API port ${base_port}; auto-selected ${mailcart_port}."
       fi
-      local mailcart_cert="${TELLER_CLASSIFIER_TLS_CERT_FILE:-$HOME/.teller/classifier-localhost-cert.pem}"
-      local mailcart_key="${TELLER_CLASSIFIER_TLS_KEY_FILE:-$HOME/.teller/classifier-localhost-key.pem}"
+      local mailcart_cert=""
+      local mailcart_key=""
+      mailcart_cert="$(
+        resolve_first_existing_file \
+          "${CLASSY_TLS_CERT_FILE:-}" \
+          "${API_TLS_CERT_FILE:-}" \
+          "${TELLER_CLASSIFIER_TLS_CERT_FILE:-}" \
+          "$HOME/.classy/classifier-localhost-cert.pem" \
+          "$HOME/.teller/classifier-localhost-cert.pem"
+      )" || mailcart_cert=""
+      mailcart_key="$(
+        resolve_first_existing_file \
+          "${CLASSY_TLS_KEY_FILE:-}" \
+          "${API_TLS_KEY_FILE:-}" \
+          "${TELLER_CLASSIFIER_TLS_KEY_FILE:-}" \
+          "$HOME/.classy/classifier-localhost-key.pem" \
+          "$HOME/.teller/classifier-localhost-key.pem"
+      )" || mailcart_key=""
       if [[ ! -f "$mailcart_cert" || ! -f "$mailcart_key" ]]; then
         echo "❌ Mailcart HTTPS stub requires TLS cert/key at ${mailcart_cert} and ${mailcart_key}"
         exit 1

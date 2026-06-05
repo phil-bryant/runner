@@ -17,19 +17,22 @@ RUN_LANE_ALLOWLIST="${RUN_LANE_ALLOWLIST:-}"
 source "${RUNNER_HOME}/src/scripts/export_test_cache_env.sh"
 export_test_cache_env "$RUNBOOK_REPO_ROOT"
 
-#R065: Parse optional CLI arguments. `--no-ui` and `--no-mutation` skip optional lanes.
+#R065: Parse optional CLI arguments. `--no-ui`, `--no-mutation`, and `--no-av` skip optional lanes.
 SKIP_UI_REGRESSION=false
 SKIP_MUTATION_LANE=false
+SKIP_AV_LANE=false
 #R065: Match the UI-regression lane by content (renumber-safe), not a hardcoded NN_ name.
 UI_REGRESSION_PATTERN="${UI_REGRESSION_PATTERN:-macos_ui_regression}"
 MUTATION_LANE_PATTERN="${MUTATION_LANE_PATTERN:-mutation_tests}"
+AV_LANE_PATTERN="${AV_LANE_PATTERN:-run_av_test}"
 print_usage() {
   cat <<USAGE
-Usage: $(basename "${BASH_SOURCE[0]}") [--no-ui] [--no-mutation] [-h|--help]
+Usage: $(basename "${BASH_SOURCE[0]}") [--no-ui] [--no-mutation] [--no-av] [-h|--help]
 
 Options:
   --no-ui     Skip the macOS UI regression lane (any *${UI_REGRESSION_PATTERN}* script).
   --no-mutation Skip the mutation lane (any *${MUTATION_LANE_PATTERN}* script).
+  --no-av     Skip the AV lane (any *${AV_LANE_PATTERN}* script).
   -h, --help  Show this help and exit.
 USAGE
 }
@@ -41,6 +44,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-mutation)
       SKIP_MUTATION_LANE=true
+      shift
+      ;;
+    --no-av)
+      SKIP_AV_LANE=true
       shift
       ;;
     -h|--help)
@@ -101,11 +108,12 @@ fi
 
 #R065: Apply optional lane filters after discovery.
 SKIPPED_LANES=""
-if [[ "$SKIP_UI_REGRESSION" == "true" || "$SKIP_MUTATION_LANE" == "true" ]]; then
+if [[ "$SKIP_UI_REGRESSION" == "true" || "$SKIP_MUTATION_LANE" == "true" || "$SKIP_AV_LANE" == "true" ]]; then
   filtered_checks=()
   skipped_lane_stems=()
   ui_skip_count=0
   mutation_skip_count=0
+  av_skip_count=0
   for candidate_script in "${CHECKS[@]}"; do
     if [[ "$SKIP_UI_REGRESSION" == "true" && "$candidate_script" == *"$UI_REGRESSION_PATTERN"* ]]; then
       skipped_lane_stems+=("${candidate_script%.sh}")
@@ -119,6 +127,12 @@ if [[ "$SKIP_UI_REGRESSION" == "true" || "$SKIP_MUTATION_LANE" == "true" ]]; the
       echo "ℹ️  --no-mutation: skipping ${candidate_script}"
       continue
     fi
+    if [[ "$SKIP_AV_LANE" == "true" && "$candidate_script" == *"$AV_LANE_PATTERN"* ]]; then
+      skipped_lane_stems+=("${candidate_script%.sh}")
+      av_skip_count=$((av_skip_count + 1))
+      echo "ℹ️  --no-av: skipping ${candidate_script}"
+      continue
+    fi
     filtered_checks+=("$candidate_script")
   done
   CHECKS=("${filtered_checks[@]}")
@@ -127,6 +141,9 @@ if [[ "$SKIP_UI_REGRESSION" == "true" || "$SKIP_MUTATION_LANE" == "true" ]]; the
   fi
   if [[ "$SKIP_MUTATION_LANE" == "true" && "$mutation_skip_count" -eq 0 ]]; then
     echo "ℹ️  --no-mutation: no *${MUTATION_LANE_PATTERN}* lane in discovery set; nothing to skip"
+  fi
+  if [[ "$SKIP_AV_LANE" == "true" && "$av_skip_count" -eq 0 ]]; then
+    echo "ℹ️  --no-av: no *${AV_LANE_PATTERN}* lane in discovery set; nothing to skip"
   fi
   for skipped_lane_stem in "${skipped_lane_stems[@]}"; do
     if [[ -n "$SKIPPED_LANES" ]]; then

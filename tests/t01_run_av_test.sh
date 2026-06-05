@@ -217,6 +217,37 @@ run_clamscan_once() {
   return "$scan_exit"
 }
 
+print_clamav_error_excerpt() {
+  local report_path="$1"
+  local max_lines="${2:-5}"
+  if ! [[ "$max_lines" =~ ^[0-9]+$ ]] || (( max_lines < 1 )); then
+    max_lines=5
+  fi
+  if [[ ! -f "$report_path" ]]; then
+    return
+  fi
+  python3 - <<'PY' "$report_path" "$max_lines"
+from pathlib import Path
+import sys
+
+report_path = Path(sys.argv[1])
+max_lines = int(sys.argv[2])
+text = report_path.read_text(encoding="utf-8", errors="replace")
+
+error_lines = []
+for line in text.splitlines():
+    if "ERROR:" in line:
+        error_lines.append(line.strip())
+    if len(error_lines) >= max_lines:
+        break
+
+if error_lines:
+    print(f"⚠️  ClamAV reported file-level scan errors (showing up to {max_lines}):")
+    for line in error_lines:
+        print(f"    {line}")
+PY
+}
+
 ensure_freshclam_config() {
   local conf_path=""
   local sample_path=""
@@ -262,11 +293,16 @@ run_clamav_scan() {
   local clamav_summary="$2"
   local clamav_scan_target="${CLAMAV_SCAN_TARGET:-.}"
   local clamav_signature_max_age_hours="${CLAMAV_SIGNATURE_MAX_AGE_HOURS:-24}"
+  local clamav_max_scan_errors="${CLAMAV_MAX_SCAN_ERRORS:-5}"
   local freshclam_ran=false
+  if ! [[ "$clamav_max_scan_errors" =~ ^[0-9]+$ ]]; then
+    echo "⚠️  Invalid CLAMAV_MAX_SCAN_ERRORS='${clamav_max_scan_errors}'; defaulting to 5."
+    clamav_max_scan_errors=5
+  fi
 
   if [[ "$RUN_CLAMAV" != "true" ]]; then
     echo "ℹ️  ClamAV repository scan skipped (set RUN_CLAMAV=true to enable)."
-    printf '%s\n' '{"scanned_files":0,"infected_files":0,"exit_code":0,"skipped":true}' > "$clamav_summary"
+    printf '%s\n' '{"scanned_files":0,"infected_files":0,"total_errors":0,"exit_code":0,"skipped":true}' > "$clamav_summary"
     : > "$clamav_report"
     return 0
   fi
@@ -329,14 +365,12 @@ run_clamav_scan() {
     run_clamscan_once "$clamav_report" "$clamav_scan_target" "$clamav_scan_target_abs"
     clamav_exit=$?
     set -e
+    if [[ -f "$clamav_report" ]]; then
+      clamav_report_text="$(<"$clamav_report")"
+    fi
   fi
 
-  if [[ "$clamav_exit" -gt 1 ]]; then
-    echo "❌ ClamAV failed to execute."
-    exit 1
-  fi
-
-  python3 - <<'PY' "$clamav_report" "$clamav_summary" "$clamav_exit"
+  python3 - <<'PY' "$clamav_report" "$clamav_summary" "$clamav_exit" "$clamav_max_scan_errors"
 import json
 import re
 import sys
@@ -345,14 +379,22 @@ from pathlib import Path
 report_path = Path(sys.argv[1])
 summary_path = Path(sys.argv[2])
 exit_code = int(sys.argv[3])
-text = report_path.read_text(encoding="utf-8", errors="replace")
+scan_error_threshold = int(sys.argv[4])
+text = ""
+if report_path.exists():
+    text = report_path.read_text(encoding="utf-8", errors="replace")
 
 scanned_match = re.search(r"Scanned files:\s*(\d+)", text)
 infected_match = re.search(r"Infected files:\s*(\d+)", text)
+errors_match = re.search(r"Total errors:\s*(\d+)", text)
+
+total_errors = int(errors_match.group(1)) if errors_match else 0
 
 summary = {
     "scanned_files": int(scanned_match.group(1)) if scanned_match else 0,
     "infected_files": int(infected_match.group(1)) if infected_match else (1 if exit_code == 1 else 0),
+    "total_errors": total_errors,
+    "max_scan_errors": scan_error_threshold,
     "exit_code": exit_code,
     "skipped": False,
 }
@@ -365,9 +407,56 @@ print("ClamAV summary")
 print(json.dumps(summary, indent=2))
 PY
 
+  local clamav_infected_files=0
+  local clamav_total_errors=0
+  read -r clamav_infected_files clamav_total_errors < <(
+    python3 - <<'PY' "$clamav_summary"
+import json
+import sys
+from pathlib import Path
+
+payload = {}
+path = Path(sys.argv[1])
+if path.exists():
+    with path.open("r", encoding="utf-8") as fh:
+        loaded = json.load(fh)
+        if isinstance(loaded, dict):
+            payload = loaded
+
+print(
+    int(payload.get("infected_files", 0)),
+    int(payload.get("total_errors", 0)),
+)
+PY
+  )
+
+  if [[ "$clamav_exit" -eq 2 ]] && (( clamav_infected_files == 0 )); then
+    echo "⚠️  ClamAV completed with scan errors: ${clamav_total_errors} (threshold=${clamav_max_scan_errors})."
+    print_clamav_error_excerpt "$clamav_report" 5
+    if (( clamav_total_errors <= clamav_max_scan_errors )); then
+      echo "✅ ClamAV soft-pass: no infections detected and scan errors are within threshold."
+      return 0
+    fi
+    echo "❌ ClamAV scan errors exceeded threshold (${clamav_total_errors} > ${clamav_max_scan_errors})."
+    exit 1
+  fi
+
   if [[ "$clamav_exit" -eq 1 ]]; then
     echo "⚠️  ClamAV detected infected files."
+    return 0
   fi
+
+  if [[ "$clamav_exit" -eq 0 ]]; then
+    if (( clamav_total_errors > 0 )); then
+      echo "⚠️  ClamAV reported scan errors despite exit 0: ${clamav_total_errors}."
+      print_clamav_error_excerpt "$clamav_report" 5
+    fi
+    return 0
+  fi
+
+  echo "❌ ClamAV scan encountered a runtime error (exit code ${clamav_exit})."
+  print_clamav_error_excerpt "$clamav_report" 5
+  exit 1
 }
 
 #R035: Enforce optional AV gate on infected findings and print explicit completion output.

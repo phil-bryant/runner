@@ -43,6 +43,11 @@ repo's pointer (and `tests/tNN_*` test pointer) by hand using the template above
 [`config/runbook/`](config/runbook/) holds one declarative profile per consuming repo. Profiles export knobs the
 goldens read before executing; they are not secrets (secrets are referenced by 1psa item name).
 
+Profiles also declare where shared pointer-contract assets are discovered:
+
+- `TRACEABILITY_REQUIREMENTS_ROOTS` for requirements-doc roots.
+- `TRACEABILITY_TEST_ROOTS` / `SHELL_BATS_ROOTS` for shell-test roots.
+
 | Profile | Shape |
 |---------|-------|
 | `eggnest.env` | Minimal: no prereq script, `VENV_EXISTS_POLICY=exit`, no pip bootstrap (cross-repo e2e only) |
@@ -97,14 +102,22 @@ is a locked golden; the generic knob-driven loader is `src/scripts/load_requirem
 ### Test lanes (`tests/`)
 
 `tests/tNN_*.sh` are thin lane wrappers that set flags and call shared engines. `src/scripts/run_unit_test_lanes.sh`
-toggles shell (Bats), pytest, SQL (pg_prove/pgTAP), Swift, and macOS UI lanes. `07_run_all_tests_parallel.sh`
-discovers `tests/t*.sh`, runs them in parallel, and writes telemetry.
+toggles shell (Bats), pytest, SQL (pg_prove/pgTAP), Swift, and macOS UI lanes. Shell-unit discovery now scans
+all directories in `SHELL_BATS_ROOTS`, which allows runner-hosted repo-specific pointer-contract bats while
+repo-local behavioral bats remain local. `07_run_all_tests_parallel.sh` discovers `tests/t*.sh`, runs them in
+parallel, and writes telemetry.
 
 ### Traceability engine (`tests/py/traceability/`)
 
 `TraceabilityVerifier` (`verification.py`), `discovery.py`, `parsing.py`, and `cli.py` map
-`requirements/**/*-requirements.md` to source files and `#R###`-tagged tests. The `tests/t04_run_requirements_traceability_tests.sh`
-lane prefers the target repo's `tests/py/traceability`, falling back to runner's copy.
+`requirements/**/*-requirements.md` (plus `TRACEABILITY_REQUIREMENTS_ROOTS`) to source files and `#R###`-tagged
+tests. Shared wrapper requirements and bats are centralized in repo-scoped runner paths:
+
+- `shared/requirements/pointers/<repo>/`
+- `shared/tests/sh/pointers/<repo>/`
+
+The `tests/t04_run_requirements_traceability_tests.sh` lane now defaults to runner's traceability engine so the
+shared roots are evaluated consistently across repos.
 
 ### Data / schema layer (`src/sql/`)
 

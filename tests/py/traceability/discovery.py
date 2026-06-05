@@ -10,8 +10,59 @@ ALLOWED_SOURCE_EXTS = {".sh", ".py", ".swift", ".sql", ".c", ".cc", ".cpp", ".cx
 ALLOWED_SOURCE_NAMES = {"Makefile", ".gitignore"}
 
 
+def _parse_root_list(raw_value: str, repo_root: Path) -> list[Path]:
+    roots: list[Path] = []
+    seen: set[str] = set()
+    normalized = raw_value.replace("\n", ":").replace(",", ":")
+    for entry in normalized.split(":"):
+        token = entry.strip()
+        if not token:
+            continue
+        path = Path(token)
+        if not path.is_absolute():
+            path = repo_root / token
+        key = path.resolve(strict=False).as_posix()
+        if key in seen:
+            continue
+        seen.add(key)
+        roots.append(path)
+    return roots
+
+
+def list_requirements_roots(repo_root: Path) -> list[Path]:
+    configured = os.environ.get("TRACEABILITY_REQUIREMENTS_ROOTS", "").strip()
+    if configured:
+        return _parse_root_list(configured, repo_root)
+    return [repo_root / "requirements"]
+
+
+def list_shell_test_roots(repo_root: Path) -> list[Path]:
+    configured = (
+        os.environ.get("TRACEABILITY_TEST_ROOTS", "").strip()
+        or os.environ.get("SHELL_BATS_ROOTS", "").strip()
+    )
+    if configured:
+        return _parse_root_list(configured, repo_root)
+    return [repo_root / "tests/sh"]
+
+
+def _requirements_root_for_file(requirements_file: Path, repo_root: Path) -> Path | None:
+    for root in list_requirements_roots(repo_root):
+        try:
+            requirements_file.relative_to(root)
+            return root
+        except ValueError:
+            continue
+    return None
+
+
 def list_requirements_files(repo_root: Path) -> list[Path]:
-    return sorted({path for path in (repo_root / "requirements").rglob("*-requirements.md") if path.is_file()})
+    files: set[Path] = set()
+    for root in list_requirements_roots(repo_root):
+        if not root.is_dir():
+            continue
+        files.update({path for path in root.rglob("*-requirements.md") if path.is_file()})
+    return sorted(files)
 
 
 def extract_source_files_from_requirements_path(requirements_file: Path) -> list[str]:
@@ -19,7 +70,8 @@ def extract_source_files_from_requirements_path(requirements_file: Path) -> list
 
 
 def extract_source_files_from_analogous_tree(requirements_file: Path, repo_root: Path) -> list[str]:
-    rel_path = requirements_file.relative_to(repo_root / "requirements")
+    req_root = _requirements_root_for_file(requirements_file, repo_root)
+    rel_path = requirements_file.relative_to(req_root) if req_root else Path(requirements_file.name)
     req_base = rel_path.name
     source_stem = req_base.removesuffix("-requirements.md")
     if source_stem == req_base:
@@ -70,8 +122,14 @@ def discover_test_files_for_requirements(
                 continue
             add_path(path.relative_to(repo_root).as_posix(), lane)
 
+    def add_shell_test(stem: str) -> None:
+        if not stem:
+            return
+        for root in list_shell_test_roots(repo_root):
+            add_path((root / f"{stem}.bats").as_posix(), "default")
+
     requirements_stem = requirements_file.name.removesuffix("-requirements.md")
-    add_path(f"tests/sh/{requirements_stem}.bats", "default")
+    add_shell_test(requirements_stem)
 
     for source_file in source_files:
         source_path = Path(source_file)
@@ -85,18 +143,18 @@ def discover_test_files_for_requirements(
         stem = source_path.stem
         ext = source_path.suffix.lower()
         if ext == ".sh":
-            add_path(f"tests/sh/{stem}.bats", "default")
+            add_shell_test(stem)
         if base == "Makefile":
-            add_path("tests/sh/Makefile.bats", "default")
+            add_shell_test("Makefile")
         if ext == ".py":
             if source_norm.startswith("src/teller/"):
                 add_path(f"tests/py/test_{stem}.py", "default")
             elif source_norm.startswith(tuple(f"{n:02d}_" for n in range(100))):
-                add_path(f"tests/sh/{stem}.bats", "default")
+                add_shell_test(stem)
             else:
                 add_path(f"tests/py/test_{stem}.py", "default")
         if ext == ".sql":
-            add_path(f"tests/sh/{stem}.bats", "default")
+            add_shell_test(stem)
             add_path(f"tests/sql/{stem}.sql", "default")
             add_path(f"tests/sql/test_{stem}.sql", "default")
         if ext == ".swift" and source_norm.startswith("src/macos-ui/Sources/"):

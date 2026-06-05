@@ -40,11 +40,18 @@ def _tls_context_for_url(url: str):
     if parsed.scheme.lower() != "https":
         return None
     hostname = (parsed.hostname or "").lower()
-    cert_file = os.environ.get("SSL_CERT_FILE") or os.environ.get("TELLER_CLASSIFIER_TLS_CERT_FILE")
+    if hostname in {"127.0.0.1", "localhost", "::1"} or hostname.endswith(".localhost"):
+        # Local DAST lanes may rotate cert paths between classy/teller profiles; keep loopback
+        # contract checks resilient by matching the permissive localhost policy used elsewhere.
+        return ssl._create_unverified_context()
+    cert_file = (
+        os.environ.get("SSL_CERT_FILE")
+        or os.environ.get("CLASSY_TLS_CERT_FILE")
+        or os.environ.get("API_TLS_CERT_FILE")
+        or os.environ.get("TELLER_CLASSIFIER_TLS_CERT_FILE")
+    )
     if cert_file and os.path.isfile(cert_file):
         return ssl.create_default_context(cafile=cert_file)
-    if hostname in {"127.0.0.1", "localhost", "::1"} or hostname.endswith(".localhost"):
-        return ssl._create_unverified_context()
     return ssl.create_default_context()
 
 

@@ -28,10 +28,14 @@ cd "$REPO_ROOT"
 #R080: Wrapper delegates numbered script companion-test coverage checks.
 #R085: Wrapper delegates repository software requirements-coverage checks.
 #R090: Wrapper delegates numbered test-tag 1:1 enforcement checks.
-#R005: Prefer the target repo's own traceability package; fall back to the runner engine.
-TRACEABILITY_PYTHONPATH="${REPO_ROOT}/tests/py"
-if [[ ! -d "${TRACEABILITY_PYTHONPATH}/traceability" ]]; then
-  TRACEABILITY_PYTHONPATH="${RUNNER_HOME}/tests/py"
+#R005: Default to the runner traceability engine so shared requirements/bats
+# roots are evaluated consistently across repos.
+TRACEABILITY_PYTHONPATH="${RUNNER_HOME}/tests/py"
+if [[ "${TRACEABILITY_ENGINE_MODE:-runner-first}" == "repo-first" ]]; then
+  TRACEABILITY_PYTHONPATH="${REPO_ROOT}/tests/py"
+  if [[ ! -d "${TRACEABILITY_PYTHONPATH}/traceability" ]]; then
+    TRACEABILITY_PYTHONPATH="${RUNNER_HOME}/tests/py"
+  fi
 fi
 exec env \
   PYTHONPATH="${TRACEABILITY_PYTHONPATH}${PYTHONPATH:+:${PYTHONPATH}}" \
