@@ -19,10 +19,23 @@ Design: Return `0` for "no tests ran", otherwise sum the outcome counts from the
 Tests:
 - R010-T01: Verify the python-unit lane parses the pytest passed-summary count.
 
+R012  Statement: Resolve the swift-unit lane count from XCTest summary output.
+Design: Parse XCTest summary lines (`Executed N tests` / `Test run with N tests`) and use the most recent matched total when multiple summaries are present.
+Tests:
+- R012-T01: Verify the swift-unit lane parses the most recent XCTest summary total.
+- R012-T02: Verify trailing `Test run with 0 tests` metadata does not override real executed totals.
+
 R015  Statement: Resolve artifact-summary lane counts from a summary JSON field.
 Design: Read an integer count field from a lane summary JSON (fuzz `property_test_count`, mutation `total`) and return it when present.
 Tests:
 - R015-T01: Verify the fuzz lane reads `property_test_count` from its summary artifact.
+
+R018  Statement: Resolve macOS UI regression lane count from scenario output artifacts.
+Design: Prefer the lane timing summary `... over N scenarios`, then fallback to parsing the XCUITest selector line or `artifacts/macos-ui-regression/xcuitest-steps.env`.
+Tests:
+- R018-T01: Verify the macOS UI regression lane reads the scenario count from the timing summary line.
+- R018-T02: Verify selector syntax (`1-3,5,7-8`) expands to a unique selected-step count.
+- R018-T03: Verify the steps artifact selector is used when the lane log has no parsable scenario summary/selector line.
 
 R020  Statement: Resolve the code-quality lane count from non-skipped sub-check reports.
 Design: Count quality sub-check report files that exist and whose content is not exactly `skipped`.
@@ -38,3 +51,5 @@ R030  Statement: Emit a safe single-test fallback for unknown or uncountable lan
 Design: Print `1` when the lane is unknown or yields a `None`/negative count, otherwise print the resolved count.
 Tests:
 - R030-T01: Verify an unknown lane falls back to printing `1`.
+- R030-T02: Verify an uncountable swift lane log falls back to printing `1`.
+- R030-T03: Verify an unparseable macOS UI regression lane log falls back to printing `1`.

@@ -532,6 +532,7 @@ fi
 #R025: Print each pass/fail line as soon as its check completes (completion order).
 pass_count=0
 fail_count=0
+aggregate_test_count=0
 total="${#CHECKS[@]}"
 reported=0
 reported_scripts=()
@@ -563,6 +564,7 @@ record_check_result() {
   if [[ "$completed_exit" -eq 0 ]]; then
     local lane_test_count="1"
     lane_test_count="$(resolve_lane_test_count "$completed_script" "$log")"
+    aggregate_test_count=$((aggregate_test_count + lane_test_count))
     emit_result_line "✅ PASS: ${completed_script} [${lane_test_count} tests] (${elapsed}s)"
     pass_count=$((pass_count + 1))
   else
@@ -840,7 +842,7 @@ fi
 
 #R030: Print overall pass/fail gate and exit code.
 if [[ "$fail_count" -eq 0 ]]; then
-  echo "✅ PASS: all parallel checks succeeded (${pass_count}/${total})"
+  echo "✅ PASS: all parallel checks succeeded [${aggregate_test_count} tests] (${pass_count}/${total})"
   exit 0
 fi
 

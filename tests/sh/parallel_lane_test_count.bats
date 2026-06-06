@@ -62,6 +62,107 @@ EOF
   [ "$output" = "12" ]
 }
 
+@test "swift unit lane parses the last XCTest summary total" {
+  #R012-T01: Verify the swift-unit lane parses the most recent XCTest summary total.
+  log_file="${TEST_REPO}/artifacts/parallel/t08-swift.log"
+  cat > "$log_file" <<'EOF'
+Test Suite 'FeatureTests' passed at 2026-01-01 12:00:00.000.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.005 (0.006) seconds
+Test Suite 'WidgetTests' passed at 2026-01-01 12:00:00.100.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.007 (0.008) seconds
+Test Suite 'All tests' passed at 2026-01-01 12:00:00.200.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.012 (0.014) seconds
+EOF
+
+  run_count "t08_run_swift_unit_tests.sh" "$log_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = "5" ]
+}
+
+@test "swift unit lane prefers Executed totals over trailing zero metadata" {
+  #R012-T02: Verify trailing `Test run with 0 tests` metadata does not override real executed totals.
+  log_file="${TEST_REPO}/artifacts/parallel/t08-swift-mixed.log"
+  cat > "$log_file" <<'EOF'
+Test Suite 'All tests' started at 2026-06-05 09:08:07.521.
+Test Suite 'MyFeatureTests' passed at 2026-06-05 09:08:09.243.
+	 Executed 174 tests, with 0 failures (0 unexpected) in 1.718 (1.722) seconds
+Test Suite 'All tests' passed at 2026-06-05 09:08:09.244.
+	 Executed 174 tests, with 0 failures (0 unexpected) in 1.720 (1.724) seconds
+Test run with 0 tests in 0 suites passed after 0.001 seconds.
+EOF
+
+  run_count "t08_run_swift_unit_tests.sh" "$log_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = "174" ]
+}
+
+@test "swift unit lane falls back to one when no summary exists" {
+  #R030-T02: Verify an uncountable swift lane log still falls back to printing 1.
+  log_file="${TEST_REPO}/artifacts/parallel/t08-swift-empty.log"
+  cat > "$log_file" <<'EOF'
+▶ Running Swift unit tests...
+No XCTest summary emitted.
+EOF
+
+  run_count "t08_run_swift_unit_tests.sh" "$log_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
+@test "macOS UI regression lane parses scenario summary total" {
+  #R018-T01: Verify the macOS UI regression lane reads the scenario count from the timing summary line.
+  log_file="${TEST_REPO}/artifacts/parallel/t11-ui-summary.log"
+  cat > "$log_file" <<'EOF'
+⏱ t14 scenario 01 matchAndClassifyShellLoads: 265 ms
+⏱ t14 scenario 02 searchFilter: 2560 ms
+⏱ t14 scenarios total: 131434 ms over 32 scenarios; app launch: 4451 ms
+EOF
+
+  run_count "t11_run_macos_ui_regression_tests.sh" "$log_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = "32" ]
+}
+
+@test "macOS UI regression lane falls back to selector line count" {
+  #R018-T02: Verify scenario selector syntax in lane output expands to a unique selected-step count.
+  log_file="${TEST_REPO}/artifacts/parallel/t11-ui-selector.log"
+  cat > "$log_file" <<'EOF'
+ℹ️  Using XCUITest profile 'smoke' with scenarios: 1-3,5,7-8
+EOF
+
+  run_count "t11_run_macos_ui_regression_tests.sh" "$log_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = "6" ]
+}
+
+@test "macOS UI regression lane falls back to one when unparseable" {
+  #R030-T03: Verify macOS UI regression logs with no scenario hints still use the single-test fallback.
+  log_file="${TEST_REPO}/artifacts/parallel/t11-ui-unparseable.log"
+  cat > "$log_file" <<'EOF'
+▶ Running macOS XCUITest smoke suite...
+No scenario summary emitted.
+EOF
+
+  run_count "t11_run_macos_ui_regression_tests.sh" "$log_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
+@test "macOS UI regression lane uses steps artifact when log lacks selector" {
+  #R018-T03: Verify the steps artifact selector is used when the lane log has no parsable scenario summary or selector line.
+  log_file="${TEST_REPO}/artifacts/parallel/t14-ui-artifact.log"
+  mkdir -p "${TEST_REPO}/artifacts/macos-ui-regression"
+  printf '2-4,10\n' > "${TEST_REPO}/artifacts/macos-ui-regression/xcuitest-steps.env"
+  cat > "$log_file" <<'EOF'
+▶ Running macOS XCUITest smoke suite...
+** TEST SUCCEEDED **
+EOF
+
+  run_count "t14_run_macos_ui_regression_tests.sh" "$log_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = "4" ]
+}
+
 @test "fuzz lane reads property_test_count from summary artifact" {
   #R015-T01: Verify the fuzz lane reads property_test_count from its summary artifact.
   log_file="${TEST_REPO}/artifacts/parallel/t08.log"

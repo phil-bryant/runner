@@ -97,6 +97,69 @@ def _parse_pytest_total(log_text: str) -> int | None:
     return None
 
 
+#R012: Swift-unit lane count prefers XCTest `Executed N tests` summaries when
+# present (to avoid trailing `Test run with 0 tests` metadata), with
+# `Test run with N tests` as fallback.
+def _parse_swift_xctest_total(log_text: str) -> int | None:
+    executed_totals = [
+        int(match.group(1))
+        for match in re.finditer(r"\bExecuted\s+(\d+)\s+tests?\b", log_text, flags=re.IGNORECASE)
+    ]
+    if executed_totals:
+        return max(executed_totals)
+
+    run_totals = [
+        int(match.group(1))
+        for match in re.finditer(r"\bTest run with\s+(\d+)\s+tests?\b", log_text, flags=re.IGNORECASE)
+    ]
+    if not run_totals:
+        return None
+    return max(run_totals)
+
+
+def _parse_numeric_selector_count(selector: str) -> int | None:
+    selector = selector.strip()
+    if not selector:
+        return None
+
+    selected_steps: set[int] = set()
+    for raw_token in selector.split(","):
+        token = raw_token.strip()
+        if not token:
+            continue
+        if re.fullmatch(r"\d+", token):
+            selected_steps.add(int(token))
+            continue
+        range_match = re.fullmatch(r"(\d+)\s*-\s*(\d+)", token)
+        if range_match is None:
+            return None
+        start = int(range_match.group(1))
+        end = int(range_match.group(2))
+        if start > end:
+            return None
+        selected_steps.update(range(start, end + 1))
+    if not selected_steps:
+        return None
+    return len(selected_steps)
+
+
+#R018: macOS UI regression lane count prefers explicit scenario summary output,
+# then falls back to the selected-step selector in log/artifact output.
+def _parse_macos_ui_regression_total(log_text: str, repo_root: Path) -> int | None:
+    summary_match = re.search(r"(?im)scenarios\s+total:\s*.*?\bover\s+(\d+)\s+scenarios?\b", log_text)
+    if summary_match is not None:
+        return int(summary_match.group(1))
+
+    selector_match = re.search(r"(?im)^\s*.*Using XCUITest profile .* with scenarios:\s*([0-9,\-\s]+)\s*$", log_text)
+    if selector_match is not None:
+        selector_count = _parse_numeric_selector_count(selector_match.group(1))
+        if selector_count is not None:
+            return selector_count
+
+    steps_selector = _read_text(repo_root / "artifacts/macos-ui-regression/xcuitest-steps.env")
+    return _parse_numeric_selector_count(steps_selector)
+
+
 def _count_existing(base_dir: Path, names: list[str]) -> int:
     return sum(1 for name in names if (base_dir / name).is_file())
 
@@ -126,6 +189,12 @@ def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int
 
     if lane_stem == "t06_run_python_unit_tests":
         return _parse_pytest_total(log_text)
+
+    if lane_stem == "t08_run_swift_unit_tests":
+        return _parse_swift_xctest_total(log_text)
+
+    if lane_stem.endswith("run_macos_ui_regression_tests"):
+        return _parse_macos_ui_regression_total(log_text, repo_root)
 
     if lane_stem == "t08_run_fuzz_tests":
         return _read_int_field(repo_root / "artifacts/fuzz/fuzz-summary.json", "property_test_count")

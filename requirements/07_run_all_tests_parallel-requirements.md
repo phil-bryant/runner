@@ -44,10 +44,11 @@ Tests:
 - R025-T01: Verify the source opens a completion FIFO and workers signal completion over fd 3.
 - R025-T02: Verify the source records completions idempotently (`record_check_result`) and recovers missing ones (`recover_missing_completions`).
 
-R030  Statement: Print the overall pass/fail gate and exit code.
-Design: Exit `0` with an overall `✅ PASS` line when every lane succeeds; exit `1` with an overall `❌ FAIL` line summarizing `passed/total` when any lane fails.
+R030  Statement: Print the overall pass/fail gate, aggregate count summary, and exit code.
+Design: Exit `0` with an overall `✅ PASS: all parallel checks succeeded [<aggregate_tests> tests] (<passed>/<total>)` line when every lane succeeds; exit `1` with an overall `❌ FAIL` line summarizing `passed/total` when any lane fails.
 Tests:
 - R030-T01: Verify the source prints the overall PASS/FAIL gate and exits `0`/`1` accordingly.
+- R030-T02: Verify the overall PASS line includes the aggregate bracketed test count and lane pass fraction format.
 
 R035  Statement: Persist per-check stdout/stderr log artifacts.
 Design: Write each lane's combined output to `${PARALLEL_CHECKS_REPORT_DIR:-./artifacts/parallel}/<stem>.log` and reference the log path in FAIL summary lines.
@@ -93,3 +94,4 @@ Tests:
 ## Changelog
 
 - 2026-06-06: Converted from `Requirements-only mode: true` to a full traceability doc with a 15-entry requirement set reconciled to the current orchestrator source (filesystem lane discovery, completion-FIFO ordering, single-run lock, scoped cleanup, lane-skip flags, and opt-out quality telemetry), plus a companion bats lane.
+- 2026-06-06: Refined R030 to require the final PASS gate format `✅ PASS: all parallel checks succeeded [<aggregate_tests> tests] (<passed>/<total>)` and added numbered test mapping `R030-T02` for the aggregate summary string.

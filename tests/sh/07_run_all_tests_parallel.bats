@@ -68,6 +68,11 @@ setup() {
   grep -Eq 'exit (0|1)' "$SCRIPT"
 }
 
+@test "formats final PASS gate with aggregate test count" {
+  #R030-T02: source prints final PASS as aggregate bracketed tests plus pass/total
+  grep -q '✅ PASS: all parallel checks succeeded \[${aggregate_test_count} tests\] (${pass_count}/${total})' "$SCRIPT"
+}
+
 @test "persists per-check log artifacts" {
   #R035-T01: source persists lane logs under PARALLEL_CHECKS_REPORT_DIR
   grep -q 'PARALLEL_CHECKS_REPORT_DIR' "$SCRIPT"
