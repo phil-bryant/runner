@@ -4,23 +4,23 @@
 
 Applies to `05_run_all_tests_parallel.sh`.
 
-R001  Statement: Wrapper runs in strict shell mode with secure umask.
-Design: Configure `umask 007` and `set -euo pipefail` before any path resolution or delegation.
+R001  Statement: Pointer runs with secure umask and strict shell mode via the shared shim.
+Design: Source `src/scripts/pointer_shim.sh`, which sets `umask 007` and `set -euo pipefail` before delegation.
 Tests:
-- R001-T01: Verify wrapper source sets `umask 007` and strict shell mode.
+- R001-T01: Verify the pointer sources `pointer_shim.sh`.
 
-R005  Statement: Wrapper resolves repository root and runner root from script location.
-Design: Compute `SCRIPT_DIR` from `${BASH_SOURCE[0]}` and derive `RUNNER_HOME` from the script-relative runner path.
+R005  Statement: Pointer resolves runner and repo roots through the shared shim.
+Design: The sourced `pointer_shim.sh` resolves `RUNNER_HOME` and `RUNBOOK_REPO_ROOT`; the pointer locates the shim under `runner/src/scripts`.
 Tests:
-- R005-T01: Verify wrapper source derives `SCRIPT_DIR` and `RUNNER_HOME` from script-relative paths.
+- R005-T01: Verify the pointer locates the shim under `runner/src/scripts`.
 
-R010  Statement: Wrapper loads the repo-specific runbook profile before delegation.
-Design: Export `RUNBOOK_REPO_ROOT` and source `runner/config/runbook/${RUNBOOK_REPO_NAME}.env` prior to `exec`.
+R010  Statement: Pointer selects its runbook profile explicitly before delegation.
+Design: Set `RUNBOOK_PROFILE="mailcart"` so the shim sources `runner/config/runbook/mailcart.env` and exports `RUNBOOK_REPO_ROOT`.
 Tests:
-- R010-T01: Verify wrapper source exports `RUNBOOK_REPO_ROOT` and sources `config/runbook/${RUNBOOK_REPO_NAME}.env`.
+- R010-T01: Verify the pointer sets `RUNBOOK_PROFILE` to the repo profile.
 
-R015  Statement: Wrapper delegates execution to runner parallel test orchestrator.
-Design: Use `exec "${RUNNER_HOME}/07_run_all_tests_parallel.sh" "$@"` so arguments pass through unchanged, including optional lane-skip flags handled by runner.
+R015  Statement: Pointer delegates execution to the mapped runner golden.
+Design: Call `delegate_golden "07_run_all_tests_parallel.sh" "$@"` so the shim execs `${RUNNER_HOME}/07_run_all_tests_parallel.sh` with arguments passed through unchanged.
 Tests:
-- R015-T01: Verify wrapper source delegates to `07_run_all_tests_parallel.sh` with `"$@"`.
-- R015-T02: Verify wrapper source does not implement local `--no-ui`/`--no-mutation`/`--no-av` filtering and relies on runner argument passthrough.
+- R015-T01: Verify the pointer calls `delegate_golden "07_run_all_tests_parallel.sh"` with `"$@"`.
+- R015-T02: Verify the pointer relies on argument passthrough and adds no local `--no-ui`/`--no-mutation`/`--no-av` filtering.
