@@ -22,11 +22,16 @@ Tests:
 - R010-T01: Verify a top-level pointer resolves `RUNBOOK_REPO_ROOT` to its own repo directory.
 - R010-T02: Verify a pointer under `tests/` resolves `RUNBOOK_REPO_ROOT` to the repo root, not the tests dir.
 
-R015  Statement: Shim sources the explicitly selected runbook profile.
-Design: Require `RUNBOOK_PROFILE`; source `runner/config/runbook/${RUNBOOK_PROFILE}.env`. Fail with a clear message when the variable is unset or the profile file is missing.
+R015  Statement: Shim sources runbook profiles via explicit profile-selection API.
+Design: Provide `select_runbook_profile "<profile>"` that sources `runner/config/runbook/<profile>.env`, exports `RUNBOOK_PROFILE`, and marks the profile loaded. Fail with a clear message when the profile argument is empty or the profile file is missing.
 Tests:
 - R015-T01: Verify the shim sources `config/runbook/<profile>.env` for the selected profile.
-- R015-T02: Verify the shim aborts when `RUNBOOK_PROFILE` is unset.
+- R015-T02: Verify the shim aborts when `select_runbook_profile` is called without a profile argument.
+
+R016  Statement: Shim preserves legacy pointer compatibility for delegation.
+Design: In `delegate_golden`, if a pointer still sets `RUNBOOK_PROFILE` and has not called `select_runbook_profile`, auto-load that profile before `exec` to keep older pointers working during migration.
+Tests:
+- R016-T01: Verify `delegate_golden` auto-loads `RUNBOOK_PROFILE` when explicit profile selection was not called.
 
 R020  Statement: Shim delegates to the mapped runner golden with argument passthrough.
 Design: Provide `delegate_golden <target> "$@"` that `exec`s `${RUNNER_HOME}/<target>`, supporting top-level goldens and nested paths (`src/scripts/...`, `tests/tNN_...`).

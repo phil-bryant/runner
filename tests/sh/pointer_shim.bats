@@ -15,6 +15,7 @@ setup() {
 #!/usr/bin/env bash
 echo "golden args: $*"
 echo "golden repo_root: ${RUNBOOK_REPO_ROOT}"
+echo "golden demo: ${DEMO_PROFILE_VAR:-unset}"
 GOLD
   chmod +x "${FIXTURE}/runner/golden.sh"
   mkdir -p "${FIXTURE}/runner/tests"
@@ -95,18 +96,18 @@ write_tests_pointer() {
 
 @test "shim sources the selected runbook profile" {
   #R015-T01
-  write_top_pointer "p.sh" "demo" 'printf "DEMO=%s\n" "${DEMO_PROFILE_VAR:-unset}"'
+  write_top_pointer "p.sh" "" 'select_runbook_profile "demo"; printf "DEMO=%s\n" "${DEMO_PROFILE_VAR:-unset}"'
   run bash "${FIXTURE}/demo/p.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"DEMO=ok"* ]]
 }
 
-@test "shim aborts when RUNBOOK_PROFILE is unset" {
+@test "shim aborts when select_runbook_profile argument is unset" {
   #R015-T02
-  write_top_pointer "p.sh" "" 'printf "should-not-run\n"'
+  write_top_pointer "p.sh" "" 'select_runbook_profile "${UNSET_PROFILE:-}"; printf "should-not-run\n"'
   run bash "${FIXTURE}/demo/p.sh"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"RUNBOOK_PROFILE must be set"* ]]
+  [[ "$output" == *"select_runbook_profile requires a profile argument"* ]]
   [[ "$output" != *"should-not-run"* ]]
 }
 
@@ -117,6 +118,15 @@ write_tests_pointer() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"golden args: alpha beta"* ]]
   [[ "$output" == *"golden repo_root: ${FIXTURE}/demo"* ]]
+}
+
+@test "delegate_golden auto-loads RUNBOOK_PROFILE for legacy pointers" {
+  #R016-T01
+  write_top_pointer "p.sh" "demo" 'delegate_golden "golden.sh" "$@"'
+  run bash "${FIXTURE}/demo/p.sh" legacy
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"golden args: legacy"* ]]
+  [[ "$output" == *"golden demo: ok"* ]]
 }
 
 @test "delegate_golden resolves nested golden paths" {
