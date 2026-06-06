@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 
 def load_module():
@@ -350,6 +351,289 @@ class CheckPostgresFreshnessTests(unittest.TestCase):
         self.assertIn("summary", report)
         self.assertIn("cve", report)
 
+
+class PostgresFreshnessHelperTests(unittest.TestCase):
+    #R020: shard-3 function tag
+    def setUp(self) -> None:
+        self.module = load_module()
+
+    def test_semver_helpers_cover_invalid_and_legacy_paths(self) -> None:
+        #R030-T02: semver helpers cover invalid, legacy, and minimum-threshold branches.
+        self.assertIsNone(self.module.parse_semver("abc"))
+        self.assertIsNone(self.module.compare_semver("bad", "1.0"))
+        self.assertEqual(self.module.parse_server_version_num("90603"), "9.6.3")
+        self.assertIsNone(self.module.parse_server_version_num("not-a-number"))
+        self.assertIsNone(self.module.meets_minimum("16.2", None))
+        self.assertEqual(self.module.compare_semver("1.0", "1.0"), 0)
+
+    def test_severity_and_component_helpers(self) -> None:
+        #R030-T03: severity/component helpers normalize unknown values and scopes.
+        self.assertEqual(self.module.normalize_severity("MODERATE"), "moderate")
+        self.assertEqual(self.module.normalize_severity("weird"), "unknown")
+        self.assertTrue(self.module.severity_meets_threshold("critical", "high"))
+        self.assertFalse(self.module.severity_meets_threshold("low", "high"))
+        self.assertEqual(self.module.component_to_scope("Contrib module"), "server")
+        self.assertEqual(self.module.component_to_scope("random text"), "both")
+        self.assertEqual(self.module.score_to_severity(None), "unknown")
+        self.assertEqual(self.module.score_to_severity(9.1), "critical")
+        self.assertEqual(self.module.score_to_severity(7.1), "high")
+        self.assertEqual(self.module.score_to_severity(4.1), "medium")
+        self.assertEqual(self.module.score_to_severity(1.0), "low")
+
+    def test_range_and_datetime_helpers(self) -> None:
+        #R035-T02: range and datetime helpers cover invalid-constraint and empty-input branches.
+        self.assertFalse(self.module.satisfies_constraint("16.2.0", "bogus"))
+        self.assertFalse(self.module.satisfies_range("16.2.0", ""))
+        self.assertFalse(self.module.version_in_any_range(None, [">=16.0,<16.3"]))
+        self.assertIsNone(self.module.parse_iso_datetime("not-iso"))
+        self.assertEqual(self.module.extract_major("16.2.1"), "16")
+        self.assertIsNone(self.module.extract_major("x"))
+        self.assertEqual(self.module.strip_html("<b>hello</b> &amp; world"), "hello & world")
+
+    def test_validate_major_and_fetch_json_shapes(self) -> None:
+        #R045-T02: major validation and JSON-file loader handle invalid values and shapes.
+        with self.assertRaises(ValueError):
+            self.module.validate_postgresql_major("00")
+        self.assertEqual(self.module.validate_postgresql_major("15"), "15")
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "data.json"
+            p.write_text("[]", encoding="utf-8")
+            self.assertIsNone(self.module.read_json_file(str(p)))
+            p.write_text(json.dumps({"ok": 1}), encoding="utf-8")
+            self.assertEqual(self.module.read_json_file(str(p)), {"ok": 1})
+
+    def test_snapshot_freshness_policy_paths(self) -> None:
+        #R045-T03: snapshot freshness policy marks stale/invalid timestamps as expected.
+        args = type("Args", (), {"fail_on_cve": True})()
+        result = {
+            "warnings": [],
+            "snapshot_stale": None,
+            "status": "evaluating",
+            "assurance": "unknown",
+            "fail_on_stale_snapshot": True,
+            "max_snapshot_age_hours": 1,
+            "gate_failed": False,
+        }
+        self.module._apply_snapshot_freshness(result, None, args)
+        self.assertTrue(result["snapshot_stale"])
+        self.assertTrue(result["gate_failed"])
+
+    def test_findings_and_summary_merge_helpers(self) -> None:
+        #R050-T02: finding collection/merge helpers handle invalid specs and stale-policy summary merge.
+        findings = self.module._findings_for_spec(
+            cve_id="CVE-X",
+            severity="high",
+            title="title",
+            spec={"component": "both", "ranges": [">=16.0,<16.3"], "fixed_versions": ["16.3"]},
+            client_version="16.2.0",
+            server_version="16.2.0",
+        )
+        self.assertEqual(len(findings), 2)
+        self.assertEqual(self.module._findings_for_spec(
+            cve_id="CVE-Y",
+            severity="high",
+            title=None,
+            spec="invalid",
+            client_version="16.2.0",
+            server_version="16.2.0",
+        ), [])
+        cve_result = {
+            "warnings": ["warn-a"],
+            "vulnerabilities": [],
+            "snapshot_stale": True,
+            "checked": True,
+            "gate_failed": True,
+        }
+        warnings = []
+        stale = []
+        self.module._merge_cve_summary(cve_result=cve_result, warnings=warnings, stale_components=stale)
+        self.assertIn("warn-a", warnings)
+        self.assertIn("cve_snapshot_stale", stale)
+        self.assertIn("cve_policy_unmet", stale)
+
+    def test_server_command_and_init_payload_helpers(self) -> None:
+        #R040-T02: server-command and initial payload helpers honor DSN/args/check flags.
+        args = type(
+            "Args",
+            (),
+            {
+                "server_psql_args": "-h db -U user",
+                "server_dsn": "postgresql://x",
+                "check_server_version": True,
+                "min_client_version": "16.0",
+                "min_server_version": "15.0",
+                "fail_on_stale": True,
+                "check_cves": True,
+                "fail_on_cve": False,
+                "cve_snapshot": "",
+                "cve_policy": "",
+            },
+        )()
+        cmd = self.module._build_server_version_command(args)
+        self.assertIn("-h", cmd)
+        self.assertIn("db", cmd)
+        client_info = self.module._initial_client_info(args, psql_path=None)
+        server_info = self.module._initial_server_info(args, psql_path=None)
+        self.assertEqual(client_info["status"], "missing")
+        self.assertEqual(server_info["status"], "unknown")
+        policy = self.module._policy_from_args(args)
+        self.assertTrue(policy["check_server_version"])
+
+    def test_fetch_security_page_branches(self) -> None:
+        #R045-T04: security-page fetch covers missing requests, network errors, and host validation.
+        with patch.object(self.module, "requests", None):
+            with self.assertRaises(RuntimeError):
+                self.module.fetch_postgresql_security_page("16")
+
+        class _ReqErr:
+            class RequestException(RuntimeError):
+                pass
+
+            @staticmethod
+            def get(*_args, **_kwargs):
+                raise _ReqErr.RequestException("network down")
+
+        with patch.object(self.module, "requests", _ReqErr):
+            with self.assertRaises(RuntimeError):
+                self.module.fetch_postgresql_security_page("16")
+
+        class _RespBadHost:
+            url = "http://evil.example.com/page"
+            text = "<html></html>"
+            encoding = "utf-8"
+
+            @staticmethod
+            def raise_for_status():
+                return None
+
+        class _ReqBadHost:
+            RequestException = RuntimeError
+
+            @staticmethod
+            def get(*_args, **_kwargs):
+                return _RespBadHost()
+
+        with patch.object(self.module, "requests", _ReqBadHost):
+            with self.assertRaises(RuntimeError):
+                self.module.fetch_postgresql_security_page("16")
+
+    def test_fetch_cve_snapshot_parses_security_rows(self) -> None:
+        #R045-T05: CVE snapshot parser extracts CVE rows from postgresql.org table markup.
+        html_payload = (
+            "<table><tr>"
+            "<td><a>CVE-2026-1111</a></td>"
+            "<td>affected</td>"
+            "<td>16.3</td>"
+            "<td>8.1 client</td>"
+            "<td>description more details</td>"
+            "</tr></table>"
+        )
+        with patch.object(self.module, "fetch_postgresql_security_page", return_value=html_payload):
+            snapshot = self.module.fetch_postgresql_cve_snapshot({"16"})
+        self.assertEqual(snapshot["source"], "postgresql.org/support/security/<major>/")
+        self.assertEqual(len(snapshot["cves"]), 1)
+        self.assertEqual(snapshot["cves"][0]["id"], "CVE-2026-1111")
+
+    def test_check_client_server_version_branches(self) -> None:
+        #R040-T03: client/server check helpers cover missing, error, stale, and success branches.
+        args = type(
+            "Args",
+            (),
+            {
+                "fail_on_stale": True,
+                "min_client_version": "16.0",
+                "check_server_version": True,
+                "min_server_version": "16.0",
+                "server_psql_args": "",
+                "server_dsn": "",
+            },
+        )()
+        warnings = []
+        stale = []
+        client_info = self.module._initial_client_info(args, psql_path=None)
+        self.module._check_client_version(
+            args=args,
+            psql_path=None,
+            client_info=client_info,
+            warnings=warnings,
+            stale_components=stale,
+        )
+        self.assertIn("client_missing", stale)
+
+        with patch.object(self.module, "run_command", return_value=(1, "bad")):
+            client_info = self.module._initial_client_info(args, psql_path="/usr/bin/psql")
+            warnings = []
+            stale = []
+            self.module._check_client_version(
+                args=args,
+                psql_path="/usr/bin/psql",
+                client_info=client_info,
+                warnings=warnings,
+                stale_components=stale,
+            )
+        self.assertEqual(client_info["status"], "error")
+        self.assertIn("client_unknown", stale)
+
+        with patch.object(self.module, "run_command", return_value=(0, "psql (PostgreSQL) 15.1")):
+            client_info = self.module._initial_client_info(args, psql_path="/usr/bin/psql")
+            warnings = []
+            stale = []
+            self.module._check_client_version(
+                args=args,
+                psql_path="/usr/bin/psql",
+                client_info=client_info,
+                warnings=warnings,
+                stale_components=stale,
+            )
+        self.assertEqual(client_info["status"], "stale")
+        self.assertIn("client_outdated", stale)
+
+        with patch.object(self.module, "run_command", return_value=(0, "160002")):
+            server_info = self.module._initial_server_info(args, psql_path="/usr/bin/psql")
+            warnings = []
+            stale = []
+            self.module._check_server_version(
+                args=args,
+                psql_path="/usr/bin/psql",
+                server_info=server_info,
+                warnings=warnings,
+                stale_components=stale,
+            )
+        self.assertEqual(server_info["status"], "ok")
+
+    def test_evaluate_cves_no_snapshot_and_invalid_entries(self) -> None:
+        #R050-T03: CVE evaluation handles missing snapshots and invalid cve entry shapes.
+        args = type(
+            "Args",
+            (),
+            {
+                "check_cves": True,
+                "fail_on_cve": True,
+                "cve_policy": "",
+                "cve_snapshot": "",
+                "refresh_cve_snapshot": False,
+            },
+        )()
+        with patch.object(self.module, "_refresh_or_load_snapshot", return_value=None):
+            result = self.module.evaluate_cves(args=args, client_version="16.2.0", server_version="16.2.0")
+        self.assertEqual(result["status"], "failed")
+        self.assertTrue(result["gate_failed"])
+
+        snapshot = {"generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), "cves": "not-a-list"}
+        with patch.object(self.module, "_refresh_or_load_snapshot", return_value=snapshot):
+            result = self.module.evaluate_cves(args=args, client_version="16.2.0", server_version="16.2.0")
+        self.assertEqual(result["status"], "inconclusive")
+
+    def test_run_command_timeout_and_target_description(self) -> None:
+        #R040-T04: command runner timeout handling and server target descriptions.
+        timeout = subprocess.TimeoutExpired(cmd=["x"], timeout=1)
+        with patch.object(self.module.subprocess, "run", side_effect=timeout):
+            rc, output = self.module.run_command(["x"], timeout_seconds=1)
+        self.assertEqual(rc, 124)
+        self.assertIn("timed out", output)
+
+        args = type("Args", (), {"server_psql_args": "", "server_dsn": "postgresql://x"})()
+        self.assertEqual(self.module.describe_server_target(args), "server dsn")
 
 if __name__ == "__main__":
     unittest.main()

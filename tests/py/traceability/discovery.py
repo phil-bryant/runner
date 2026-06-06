@@ -56,13 +56,34 @@ def _parse_root_list(raw_value: str, repo_root: Path) -> list[Path]:
     return roots
 
 
+#R100: shard-3 function tag
+def _restrict_roots_to_repo(roots: list[Path], repo_root: Path) -> list[Path]:
+    """Keep only roots that resolve within the active repository root.
+
+    This prevents environment-level root overrides from leaking files across
+    sibling repositories during unit tests or nested workspace runs.
+    """
+    repo_resolved = repo_root.resolve(strict=False)
+    kept: list[Path] = []
+    for root in roots:
+        resolved = root.resolve(strict=False)
+        try:
+            resolved.relative_to(repo_resolved)
+        except ValueError:
+            continue
+        kept.append(resolved)
+    return kept
+
+
 #R001: Resolve requirements roots, defaulting to repo_root/requirements and
 # honoring a TRACEABILITY_REQUIREMENTS_ROOTS override (colon/comma/newline list).
 #R065: shard-3 function tag
 def list_requirements_roots(repo_root: Path) -> list[Path]:
     configured = os.environ.get("TRACEABILITY_REQUIREMENTS_ROOTS", "").strip()
     if configured:
-        return _parse_root_list(configured, repo_root)
+        roots = _restrict_roots_to_repo(_parse_root_list(configured, repo_root), repo_root)
+        if roots:
+            return roots
     return [repo_root / "requirements"]
 
 
@@ -74,7 +95,9 @@ def list_shell_test_roots(repo_root: Path) -> list[Path]:
         or os.environ.get("SHELL_BATS_ROOTS", "").strip()
     )
     if configured:
-        return _parse_root_list(configured, repo_root)
+        roots = _restrict_roots_to_repo(_parse_root_list(configured, repo_root), repo_root)
+        if roots:
+            return roots
     return [repo_root / "tests/sh"]
 
 

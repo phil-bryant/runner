@@ -127,6 +127,195 @@ class ParallelLaneTestCountTests(unittest.TestCase):
             count = self.module.resolve_lane_count("t06_run_sql_unit_tests.sh", lane_log, repo_root)
         self.assertEqual(count, 5)
 
+    def test_read_text_and_json_helpers_cover_error_paths(self):
+        #R015-T02: file readers handle missing/invalid payloads safely.
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            missing = base / "missing.txt"
+            self.assertEqual(self.module._read_text(missing), "")
+            self.assertIsNone(self.module._read_json(missing))
+            bad_json = base / "bad.json"
+            bad_json.write_text("{", encoding="utf-8")
+            self.assertIsNone(self.module._read_json(bad_json))
+            bad_field = base / "field.json"
+            bad_field.write_text(json.dumps({"count": "x"}), encoding="utf-8")
+            self.assertIsNone(self.module._read_int_field(bad_field, "count"))
+            self.assertIsNone(self.module._read_int_field(bad_field, "missing"))
+
+    def test_extract_reports_dir_default_when_log_has_no_reports_line(self):
+        #R025-T02: report-dir extractor falls back to default when no Reports line exists.
+        repo_root = Path("/repo/root")
+        default = repo_root / "artifacts/security/reports"
+        self.assertEqual(
+            self.module._extract_reports_dir_from_log("no reports marker", repo_root, default),
+            default,
+        )
+
+    def test_pytest_parser_handles_no_tests_and_collected_fallback(self):
+        #R010-T02: pytest parser handles no-tests and collected fallback branches.
+        self.assertEqual(self.module._parse_pytest_total("no tests ran in 0.01s"), 0)
+        self.assertEqual(self.module._parse_pytest_total("collected 17 items\nsomething"), 17)
+        self.assertIsNone(self.module._parse_pytest_total("no pytest markers here"))
+
+    def test_swift_parser_uses_test_run_fallback(self):
+        #R012-T02: swift parser falls back to "Test run with N tests".
+        self.assertEqual(self.module._parse_swift_xctest_total("Test run with 6 tests"), 6)
+
+    def test_sql_parser_uses_ok_line_fallback(self):
+        #R022-T03: sql parser falls back to counting ok TAP lines.
+        log_text = "ok 1 - one\nok 2 - two\nok 3 - three\n"
+        self.assertEqual(self.module._parse_sql_unit_total(log_text), 3)
+        self.assertIsNone(self.module._parse_sql_unit_total("nothing to parse"))
+
+    def test_cpp_parser_uses_fallback_patterns(self):
+        #R001-T02: C++ parser covers gtest/catch2/fallback case counting branches.
+        gtest = "[==========] Running 12 tests from 4 test suites."
+        self.assertEqual(self.module._parse_cpp_integration_total(gtest), 12)
+        catch2 = "All tests passed (24 assertions in 9 test cases)"
+        self.assertEqual(self.module._parse_cpp_integration_total(catch2), 9)
+        fallback = "Test #1: A\nTest #2: B\n"
+        self.assertEqual(self.module._parse_cpp_integration_total(fallback), 2)
+        self.assertEqual(self.module._parse_cpp_integration_total("Total Tests: 14"), 14)
+        self.assertEqual(self.module._parse_cpp_integration_total("Running TestA\nRunning TestB"), 2)
+        self.assertIsNone(self.module._parse_cpp_integration_total("unrecognized output"))
+
+    def test_numeric_selector_rejects_invalid_tokens(self):
+        #R018-T03: selector parser rejects malformed/reversed range syntax.
+        self.assertIsNone(self.module._parse_numeric_selector_count("abc"))
+        self.assertIsNone(self.module._parse_numeric_selector_count("5-2"))
+        self.assertIsNone(self.module._parse_numeric_selector_count(",,"))
+        self.assertIsNone(self.module._parse_numeric_selector_count(""))
+
+    def test_macos_ui_parser_falls_back_to_xctest_then_selector_file(self):
+        #R018-T04: macOS UI parser falls back to XCTest and then selector-file parsing.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            selector_file = repo_root / "artifacts/macos-ui-regression/xcuitest-steps.env"
+            selector_file.parent.mkdir(parents=True, exist_ok=True)
+            selector_file.write_text("1-2,4", encoding="utf-8")
+            xctest_total = self.module._parse_macos_ui_regression_total("Executed 5 tests", repo_root)
+            selector_total = self.module._parse_macos_ui_regression_total("no summary", repo_root)
+        self.assertEqual(xctest_total, 5)
+        self.assertEqual(selector_total, 3)
+        self.assertEqual(
+            self.module._parse_macos_ui_regression_total(
+                "scenarios total: completed over 9 scenarios",
+                Path("/tmp"),
+            ),
+            9,
+        )
+        self.assertEqual(
+            self.module._parse_macos_ui_regression_total(
+                "Using XCUITest profile x with scenarios: 1-3,7",
+                Path("/tmp"),
+            ),
+            4,
+        )
+
+    def test_parse_traceability_and_bats_none_paths(self):
+        #R001-T03: traceability and bats parsers return None when no usable counts exist.
+        self.assertIsNone(self.module._parse_traceability_total("Summary: nothing"))
+        self.assertEqual(self.module._parse_bats_total("ok 1\nok 2\n"), 2)
+        self.assertIsNone(self.module._parse_bats_total("not tap output"))
+
+    def test_resolve_lane_count_covers_primary_parser_branches(self):
+        #R030-T04: resolver routes trace/shell/python/swift/macOS lanes to parser outputs.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            trace_log = repo_root / "trace.log"
+            trace_log.write_text("Summary: total=5 pass=4 fail=1", encoding="utf-8")
+            shell_log = repo_root / "shell.log"
+            shell_log.write_text("1..3\nok 1\nok 2\nok 3\n", encoding="utf-8")
+            py_log = repo_root / "py.log"
+            py_log.write_text("2 passed in 0.1s", encoding="utf-8")
+            swift_log = repo_root / "swift.log"
+            swift_log.write_text("Executed 4 tests", encoding="utf-8")
+            macos_log = repo_root / "macos.log"
+            macos_log.write_text("scenarios total: over 6 scenarios", encoding="utf-8")
+
+            self.assertEqual(self.module.resolve_lane_count("t04_run_requirements_traceability_tests.sh", trace_log, repo_root), 5)
+            self.assertEqual(self.module.resolve_lane_count("t05_run_shell_unit_tests.sh", shell_log, repo_root), 3)
+            self.assertEqual(self.module.resolve_lane_count("t06_run_python_unit_tests.sh", py_log, repo_root), 2)
+            self.assertEqual(self.module.resolve_lane_count("t07_run_swift_unit_tests.sh", swift_log, repo_root), 4)
+            self.assertEqual(self.module.resolve_lane_count("t09_run_macos_ui_regression_tests.sh", macos_log, repo_root), 6)
+
+    def test_resolve_lane_count_handles_all_artifact_driven_lanes(self):
+        #R030-T02: lane resolver covers fuzz/mutation/quality/security/static/dynamic branches.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            lane_log = repo_root / "lane.log"
+            lane_log.write_text("Reports: artifacts/security/reports", encoding="utf-8")
+
+            fuzz = repo_root / "artifacts/fuzz"
+            fuzz.mkdir(parents=True, exist_ok=True)
+            (fuzz / "fuzz-summary.json").write_text(json.dumps({"property_test_count": 11}), encoding="utf-8")
+            self.assertEqual(
+                self.module.resolve_lane_count("t07_run_fuzz_tests.sh", lane_log, repo_root),
+                11,
+            )
+
+            mutation = repo_root / "artifacts/mutation"
+            mutation.mkdir(parents=True, exist_ok=True)
+            (mutation / "mutation-summary.json").write_text(json.dumps({"total": 13}), encoding="utf-8")
+            self.assertEqual(
+                self.module.resolve_lane_count("t08_run_mutation_tests.sh", lane_log, repo_root),
+                13,
+            )
+
+            quality = repo_root / "artifacts/quality/reports"
+            quality.mkdir(parents=True, exist_ok=True)
+            (quality / "vulture.txt").write_text("ok", encoding="utf-8")
+            (quality / "radon.txt").write_text("skipped", encoding="utf-8")
+            self.assertEqual(
+                self.module.resolve_lane_count("t04_run_code_quality_tests.sh", lane_log, repo_root),
+                1,
+            )
+
+            security = repo_root / "artifacts/security"
+            security.mkdir(parents=True, exist_ok=True)
+            (security / "dependency-freshness.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(
+                self.module.resolve_lane_count("t09_run_dependency_freshness_tests.sh", lane_log, repo_root),
+                1,
+            )
+
+            static_reports = repo_root / "artifacts/security/reports"
+            static_reports.mkdir(parents=True, exist_ok=True)
+            (static_reports / "semgrep.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(self.module.resolve_lane_count("t10_run_static_security_tests.sh", lane_log, repo_root), 1)
+
+            dynamic_reports = repo_root / "artifacts/security-dast"
+            dynamic_reports.mkdir(parents=True, exist_ok=True)
+            (dynamic_reports / "zap-classification-summary.json").write_text("{}", encoding="utf-8")
+            (dynamic_reports / "schemathesis.log").write_text("ok", encoding="utf-8")
+            self.assertEqual(
+                self.module.resolve_lane_count("t11_run_dynamic_security_tests.sh", repo_root / "dynamic.log", repo_root),
+                2,
+            )
+
+    def test_main_prints_fallback_for_none_and_negative_counts(self):
+        #R030-T03: CLI prints fallback value 1 for None/negative count resolver output.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            lane_log = repo_root / "lane.log"
+            lane_log.write_text("x", encoding="utf-8")
+            with patch.object(self.module, "resolve_lane_count", return_value=None):
+                with patch("sys.argv", [
+                    "parallel_lane_test_count.py",
+                    "--lane-script", "a.sh",
+                    "--lane-log", str(lane_log),
+                    "--repo-root", str(repo_root),
+                ]):
+                    self.assertEqual(self.module.main(), 0)
+            with patch.object(self.module, "resolve_lane_count", return_value=-5):
+                with patch("sys.argv", [
+                    "parallel_lane_test_count.py",
+                    "--lane-script", "a.sh",
+                    "--lane-log", str(lane_log),
+                    "--repo-root", str(repo_root),
+                ]):
+                    self.assertEqual(self.module.main(), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

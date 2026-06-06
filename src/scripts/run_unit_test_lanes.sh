@@ -25,6 +25,10 @@ MACOS_UI_SWIFT_LOCK_TIMEOUT_SECONDS="${MACOS_UI_SWIFT_LOCK_TIMEOUT_SECONDS:-600}
 #R030: Keep crash-reporter verification isolated to dedicated script 14.
 BATS_FILTER="${BATS_FILTER:-}"
 SQL_TESTS_DIR="${SQL_TESTS_DIR:-}"
+RUN_PYTEST_COVERAGE="${RUN_PYTEST_COVERAGE:-true}"
+COVERAGE_REPORT_DIR="${COVERAGE_REPORT_DIR:-./artifacts/coverage}"
+COVERAGE_SOURCE_DIRS="${COVERAGE_SOURCE_DIRS:-${PYTHON_SRC_DIRS:-}}"
+COVERAGE_FAIL_UNDER="${COVERAGE_FAIL_UNDER:-}"
 
 if [[ "$RUN_SQL_TESTS" == "true" && -z "$SQL_TESTS_DIR" ]]; then
   if [[ ! -d "./tests/sql" && ! -d "./tests/sql/sqlite" ]]; then
@@ -292,6 +296,13 @@ if [[ "$RUN_PYTHON_TESTS" == "true" ]]; then
   echo "▶ Running Python unit tests (pytest)..."
   PYTEST_DIR="${PYTEST_DIR:-tests/py}"
   UNITTEST_PYTHON="python3"
+  coverage_sources_csv=""
+  if [[ -n "${COVERAGE_SOURCE_DIRS// }" ]]; then
+    coverage_sources_csv="$(printf '%s\n' "$COVERAGE_SOURCE_DIRS" | tr ',:' '  ' | xargs)"
+    coverage_sources_csv="${coverage_sources_csv// /,}"
+  elif [[ -d "./src" ]]; then
+    coverage_sources_csv="src"
+  fi
   if [[ -n "${PYTHONPATH:-}" ]]; then
     UNITTEST_PYTHONPATH="./src:${PYTHONPATH}"
   else
@@ -315,7 +326,68 @@ PY
       fi
     fi
   fi
-  PYTHONPATH="$UNITTEST_PYTHONPATH" "$UNITTEST_PYTHON" -m pytest "$PYTEST_DIR" -q
+  if [[ "$RUN_PYTEST_COVERAGE" == "true" ]] && PYTHONPATH="$UNITTEST_PYTHONPATH" "$UNITTEST_PYTHON" -m coverage --version >/dev/null 2>&1; then
+    mkdir -p "$COVERAGE_REPORT_DIR"
+    coverage_data_file="${COVERAGE_REPORT_DIR}/.coverage"
+    coverage_run_cmd=( "$UNITTEST_PYTHON" -m coverage run "--data-file=${coverage_data_file}" )
+    if [[ -n "$coverage_sources_csv" ]]; then
+      coverage_run_cmd+=( "--source=${coverage_sources_csv}" )
+    fi
+    coverage_report_cmd=( "$UNITTEST_PYTHON" -m coverage report "--data-file=${coverage_data_file}" )
+    if [[ -n "$COVERAGE_FAIL_UNDER" ]]; then
+      coverage_report_cmd+=( "--fail-under=${COVERAGE_FAIL_UNDER}" )
+    fi
+    echo "▶ Collecting Python line coverage..."
+    set +e
+    PYTHONPATH="$UNITTEST_PYTHONPATH" "${coverage_run_cmd[@]}" -m pytest "$PYTEST_DIR" -q
+    pytest_exit=$?
+    set -e
+    coverage_report_exit=0
+    coverage_xml_exit=0
+    coverage_json_exit=0
+    if [[ -f "$coverage_data_file" ]]; then
+      set +e
+      "${coverage_report_cmd[@]}"
+      coverage_report_exit=$?
+      "$UNITTEST_PYTHON" -m coverage xml "--data-file=${coverage_data_file}" -o "${COVERAGE_REPORT_DIR}/coverage.xml"
+      coverage_xml_exit=$?
+      "$UNITTEST_PYTHON" -m coverage json "--data-file=${coverage_data_file}" -o "${COVERAGE_REPORT_DIR}/coverage.json"
+      coverage_json_exit=$?
+      set -e
+      "$UNITTEST_PYTHON" - "${COVERAGE_REPORT_DIR}/coverage.json" "${COVERAGE_REPORT_DIR}/coverage-summary.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+coverage_json = Path(sys.argv[1])
+summary_json = Path(sys.argv[2])
+payload = json.loads(coverage_json.read_text(encoding="utf-8"))
+totals = payload.get("totals", {})
+percent_covered = float(totals.get("percent_covered", 0.0))
+summary = {
+    "percent_covered": round(percent_covered, 2),
+    "line_rate": round(percent_covered / 100.0, 4),
+    "covered_lines": int(totals.get("covered_lines", 0)),
+    "missing_lines": int(totals.get("missing_lines", 0)),
+    "excluded_lines": int(totals.get("excluded_lines", 0)),
+    "num_statements": int(totals.get("num_statements", 0)),
+}
+summary_json.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+PY
+      echo "Coverage reports: ${COVERAGE_REPORT_DIR}/coverage.{xml,json}"
+    fi
+    if [[ "$pytest_exit" -ne 0 ]]; then
+      exit "$pytest_exit"
+    fi
+    if [[ "$coverage_report_exit" -ne 0 || "$coverage_xml_exit" -ne 0 || "$coverage_json_exit" -ne 0 ]]; then
+      exit 1
+    fi
+  else
+    if [[ "$RUN_PYTEST_COVERAGE" == "true" ]]; then
+      echo "⚠️  coverage.py not available in active environment; running pytest without coverage."
+    fi
+    PYTHONPATH="$UNITTEST_PYTHONPATH" "$UNITTEST_PYTHON" -m pytest "$PYTEST_DIR" -q
+  fi
 fi
 
 #R025: Run pgTAP SQL unit tests.
