@@ -63,8 +63,10 @@ R041  Statement: Fall back to environment variables when 1psa cannot resolve an 
 Design: When `1psa` is missing or fails for any reason, `rb_read_1psa_item` resolves the item from the matching environment variable before hard-failing.
 Tests:
 - R041-T01: With `1psa` unavailable and a matching env var set, verify `rb_read_1psa_item` returns the env value.
+- R041-T02: Verify 1psa command failures still recover via dotenv `ITEM.password` lookup.
 
 R042  Statement: Provide case-insensitive environment-variable secret fallback.
 Design: `rb_lookup_env_fallback` tries the item name verbatim, then an uppercased variant, emitting only the value.
 Tests:
 - R042-T01: Verify `rb_lookup_env_fallback` resolves a lowercase item name from its uppercased environment variable.
+- R042-T02: Verify password fallback checks `ITEM.password` before bare `ITEM` in dotenv.

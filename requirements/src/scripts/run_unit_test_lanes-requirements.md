@@ -34,6 +34,8 @@ R025  Statement: Resolve DB profile exports before SQL lane preflight and execut
 Design: Require executable `db_profile_export.sh`, evaluate exported variables, and use profile-derived backend settings (PostgreSQL or SQLite) for SQL preflight checks.
 Tests:
 - R025-T01: Verify missing or failing DB profile export helper prevents SQL lane startup.
+- R025-T02: Verify SQL lane resolves primary DB password via `ITEM.password` fallback when 1psa fails.
+- R025-T03: Verify SQL lane resolves admin-role password via `ITEM.password` fallback when 1psa fails.
 
 R030  Statement: Keep crash-verification flow isolated from shared unit-test lanes.
 Design: Do not invoke crash verification from this helper; keep crash checks in dedicated numbered entrypoint.
