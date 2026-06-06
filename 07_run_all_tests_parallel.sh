@@ -342,6 +342,35 @@ emit_result_line() {
   echo "$message"
 }
 
+resolve_lane_test_count() {
+  local completed_script="$1"
+  local log_file="$2"
+  local helper="${SCRIPT_DIR}/src/scripts/parallel_lane_test_count.py"
+  local lane_test_count="1"
+  local helper_exit=0
+
+  if [[ ! -f "$helper" ]]; then
+    printf '%s\n' "$lane_test_count"
+    return 0
+  fi
+
+  set +e
+  lane_test_count="$(
+    python3 "$helper" \
+      --lane-script "$completed_script" \
+      --lane-log "$log_file" \
+      --repo-root "$RUNBOOK_REPO_ROOT" \
+      --report-dir "$REPORT_DIR"
+  )"
+  helper_exit=$?
+  set -e
+
+  if [[ "$helper_exit" -ne 0 || ! "$lane_test_count" =~ ^[0-9]+$ ]]; then
+    lane_test_count="1"
+  fi
+  printf '%s\n' "$lane_test_count"
+}
+
 derive_failure_reason() {
   local log_file="$1"
   if [[ ! -f "$log_file" ]]; then
@@ -532,7 +561,9 @@ record_check_result() {
     long_pole_script="$completed_script"
   fi
   if [[ "$completed_exit" -eq 0 ]]; then
-    emit_result_line "✅ PASS: ${completed_script} (${elapsed}s)"
+    local lane_test_count="1"
+    lane_test_count="$(resolve_lane_test_count "$completed_script" "$log")"
+    emit_result_line "✅ PASS: ${completed_script} [${lane_test_count} tests] (${elapsed}s)"
     pass_count=$((pass_count + 1))
   else
     local failure_reason
