@@ -61,6 +61,60 @@ def _generate_mutants_serial(*, walk_source_files, create_file_mutants, MutantGe
     return stats
 
 
+def _ensure_mutmut_config_loaded() -> None:
+    try:
+        from mutmut.__main__ import ensure_config_loaded as legacy_ensure_config_loaded
+    except (ImportError, AttributeError):
+        legacy_ensure_config_loaded = None
+
+    if callable(legacy_ensure_config_loaded):
+        legacy_ensure_config_loaded()
+        return
+
+    try:
+        from mutmut.configuration import Config
+    except ImportError as exc:
+        raise RuntimeError(
+            "Unable to load mutmut configuration: missing legacy ensure_config_loaded and Config API."
+        ) from exc
+
+    ensure_loaded = getattr(Config, "ensure_loaded", None)
+    if callable(ensure_loaded):
+        ensure_loaded()
+        return
+
+    get_config = getattr(Config, "get", None)
+    if callable(get_config):
+        get_config()
+        return
+
+    raise RuntimeError("Unable to load mutmut configuration: unsupported Config API.")
+
+
+def _should_mutate_path(*, mutmut_module, path: Path) -> bool:
+    config = getattr(mutmut_module, "config", None)
+    if config is None:
+        try:
+            from mutmut.configuration import Config
+        except ImportError:
+            return True
+        config = Config.get()
+
+    should_ignore = getattr(config, "should_ignore_for_mutation", None)
+    if callable(should_ignore):
+        return not bool(should_ignore(path))
+
+    should_mutate = getattr(config, "should_mutate", None)
+    if callable(should_mutate):
+        return bool(should_mutate(path))
+
+    private_should_ignore = getattr(config, "_should_ignore_for_mutation", None)
+    if callable(private_should_ignore):
+        return not bool(private_should_ignore(path))
+
+    return True
+
+
 def _prepare(root: Path, max_children: int) -> int:
     os.chdir(root)
     os.environ["MUTANT_UNDER_TEST"] = "mutant_generation"
@@ -72,7 +126,6 @@ def _prepare(root: Path, max_children: int) -> int:
         copy_also_copy_files,
         copy_src_dir,
         create_file_mutants,
-        ensure_config_loaded,
         makedirs,
         run_forced_fail_test,
         setup_source_paths,
@@ -82,7 +135,7 @@ def _prepare(root: Path, max_children: int) -> int:
     )
     from pathlib import Path as PPath
 
-    ensure_config_loaded()
+    _ensure_mutmut_config_loaded()
     makedirs(PPath("mutants"), exist_ok=True)
     path_before_pool = sys.path.copy()
     with CatchOutput(spinner_title="Generating mutants"):
@@ -275,7 +328,7 @@ def _collect_mutation_tasks(
     metas_by_path: dict = {}
     tasks: list[tuple[Path, str]] = []
     for path in source_paths:
-        if mutmut.config.should_ignore_for_mutation(path):
+        if not _should_mutate_path(mutmut_module=mutmut, path=path):
             continue
         meta = SourceFileMutationData(path=path)
         meta.load()
@@ -291,9 +344,9 @@ def _collect_mutation_tasks(
 def _execute(root: Path, python: Path) -> int:
     os.chdir(root)
     import mutmut
-    from mutmut.__main__ import SourceFileMutationData, ensure_config_loaded, load_stats, walk_source_files
+    from mutmut.__main__ import SourceFileMutationData, load_stats, walk_source_files
 
-    ensure_config_loaded()
+    _ensure_mutmut_config_loaded()
     if not load_stats():
         print("mutmut-stats.json missing; run prepare first.")
         return 1
