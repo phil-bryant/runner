@@ -1,12 +1,14 @@
 #!/usr/bin/env bats
 # Self-contained shell unit tests for src/scripts/export_test_cache_env.sh (runner engine helper).
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   SRC="${REPO_ROOT}/src/scripts/export_test_cache_env.sh"
   FIXTURE="$(mktemp -d)"
 }
 
+#R001: shard-3 function tag
 teardown() {
   [ -n "${FIXTURE:-}" ] && [ -d "${FIXTURE}" ] && mv "${FIXTURE}" "${BATS_TEST_TMPDIR:-${TMPDIR:-/tmp}}/used.$$.$RANDOM" || true
 }

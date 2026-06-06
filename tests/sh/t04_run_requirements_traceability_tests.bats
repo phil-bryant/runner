@@ -5,12 +5,14 @@
 # reaches the Python traceability CLI. Engine behavior is tested separately under
 # tests/py/test_*.py.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   WRAPPER="${REPO_ROOT}/tests/t04_run_requirements_traceability_tests.sh"
   OTHER_DIR="$(cd "$(mktemp -d)" && pwd -P)"
 }
 
+#R001: shard-3 function tag
 teardown() {
   if [ -n "${OTHER_DIR:-}" ] && [ -d "${OTHER_DIR}" ]; then
     rmdir "${OTHER_DIR}" 2>/dev/null || true

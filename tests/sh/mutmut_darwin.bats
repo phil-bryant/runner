@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Self-contained static unit tests for src/scripts/mutmut_darwin.py + mutmut_darwin_stub.py (runner engine helpers).
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   SRC="${REPO_ROOT}/src/scripts/mutmut_darwin.py"

@@ -3,6 +3,7 @@
 # the script's structure/behavior by inspecting the source so they run without a
 # venv, pytest, or any online dependency.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   SCRIPT="${REPO_ROOT}/05_run_e2e_tests.sh"

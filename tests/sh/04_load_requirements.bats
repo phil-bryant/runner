@@ -4,6 +4,7 @@
 # executing it, because exec'ing the canonical generic loader requires a venv/pip
 # bootstrap that is out of scope for a unit test.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   SCRIPT="${REPO_ROOT}/04_load_requirements.sh"

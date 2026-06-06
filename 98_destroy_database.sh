@@ -21,6 +21,7 @@ if [[ ! -x "$DB_PROFILE_HELPER" ]]; then
     echo "DB profile helper is missing or not executable: ${DB_PROFILE_HELPER}"
     exit 1
 fi
+#R001: shard-3 function tag
 load_profile_exports_from_file() {
     local exports_file="$1"
     local invalid_lines=""
@@ -48,6 +49,7 @@ load_profile_exports_from_file() {
     set +a
 }
 
+#R001: shard-3 function tag
 require_nonempty_env() {
     local scope="$1"
     shift
@@ -60,6 +62,7 @@ require_nonempty_env() {
     done
 }
 
+#R001: shard-3 function tag
 is_valid_pg_identifier() {
     local identifier="$1"
     [[ "$identifier" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]]
@@ -146,6 +149,7 @@ if [[ "${PROFILE_TARGET:-local}" == "managed" ]]; then
     fi
 
     # Run SQL against the managed target as the profile user.
+    #R001: shard-3 function tag
     run_psql_managed() {
         PGPASSWORD="$MANAGED_PASSWORD" PGSSLMODE="$PG_SSLMODE" psql "${PSQL_OPTS[@]}" \
             -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DBNAME" "$@"

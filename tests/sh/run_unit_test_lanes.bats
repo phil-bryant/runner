@@ -4,6 +4,7 @@
 # RUNNER_HOME/RUNBOOK_REPO_ROOT and its sibling helpers exactly as in the
 # real monorepo.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   FIXTURE="$(cd "$(mktemp -d)" && pwd -P)"
@@ -22,6 +23,7 @@ setup() {
   LANES="${RUNNER}/src/scripts/run_unit_test_lanes.sh"
 }
 
+#R001: shard-3 function tag
 teardown() {
   if [ -n "${FIXTURE:-}" ] && [ -d "${FIXTURE}" ]; then
     rm -rf "${FIXTURE}" || true

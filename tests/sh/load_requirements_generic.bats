@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Self-contained shell unit tests for src/scripts/load_requirements_generic.sh (generic load-requirements golden).
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   SRC="${REPO_ROOT}/src/scripts/load_requirements_generic.sh"

@@ -28,3 +28,8 @@ R020  Statement: Emit prepared OpenAPI fixture artifact and seed summary.
 Design: Write the prepared schema fixture file and print deterministic seed summary metadata for downstream lanes.
 Tests:
 - R020-T01: Verify fixture artifact emission and summary payload fields from main orchestration.
+
+R050  Statement: Transactions endpoint query params are tightened with deterministic fixtures.
+Design: `tighten_transactions_query_params` enforces date-shaped query constraints and examples for schemathesis transactions requests.
+Tests:
+- R050-T01: Verify transactions query parameter fixtures set date constraints and seed examples.

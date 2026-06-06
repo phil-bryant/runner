@@ -151,3 +151,24 @@ def test_emit_fixture_and_summary():
         payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert rc == 0
     assert "paths" in payload
+
+
+def test_tighten_transactions_query_params_sets_fixtures():
+    #R050-T01: Verify transactions query fixture tightening applies date constraints and examples.
+    paths = {
+        "/v1/transactions": {
+            "get": {
+                "parameters": [
+                    {"in": "query", "name": "start_date", "schema": {"type": "string", "pattern": ".*"}},
+                    {"in": "query", "name": "end_date", "schema": {"type": "string"}},
+                ]
+            }
+        }
+    }
+    MODULE.tighten_transactions_query_params(paths)
+    params = paths["/v1/transactions"]["get"]["parameters"]
+    start = next(item for item in params if item["name"] == "start_date")
+    end = next(item for item in params if item["name"] == "end_date")
+    assert start["schema"]["format"] == "date"
+    assert start["schema"]["minLength"] == 10
+    assert end["examples"]["seed"]["value"] == "2026-04-15"

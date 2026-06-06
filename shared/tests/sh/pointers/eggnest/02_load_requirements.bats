@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
 
+#R001: shard-3 function tag
 src() {
   printf '%s' "${RUNBOOK_REPO_ROOT}/02_load_requirements.sh"
 }

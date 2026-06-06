@@ -36,6 +36,7 @@ def list_traceability_engine_files(repo_root: Path) -> list[str]:
     return sorted(files)
 
 
+#R100: shard-3 function tag
 def _parse_root_list(raw_value: str, repo_root: Path) -> list[Path]:
     roots: list[Path] = []
     seen: set[str] = set()
@@ -57,6 +58,7 @@ def _parse_root_list(raw_value: str, repo_root: Path) -> list[Path]:
 
 #R001: Resolve requirements roots, defaulting to repo_root/requirements and
 # honoring a TRACEABILITY_REQUIREMENTS_ROOTS override (colon/comma/newline list).
+#R065: shard-3 function tag
 def list_requirements_roots(repo_root: Path) -> list[Path]:
     configured = os.environ.get("TRACEABILITY_REQUIREMENTS_ROOTS", "").strip()
     if configured:
@@ -64,6 +66,8 @@ def list_requirements_roots(repo_root: Path) -> list[Path]:
     return [repo_root / "requirements"]
 
 
+#R105: shard-3 function tag
+#R065: shard-3 function tag
 def list_shell_test_roots(repo_root: Path) -> list[Path]:
     configured = (
         os.environ.get("TRACEABILITY_TEST_ROOTS", "").strip()
@@ -74,6 +78,7 @@ def list_shell_test_roots(repo_root: Path) -> list[Path]:
     return [repo_root / "tests/sh"]
 
 
+#R110: shard-3 function tag
 def _requirements_root_for_file(requirements_file: Path, repo_root: Path) -> Path | None:
     for root in list_requirements_roots(repo_root):
         try:
@@ -99,6 +104,7 @@ def extract_source_files_from_requirements_path(requirements_file: Path) -> list
     return extract_source_files_from_requirements(requirements_file.read_text(encoding="utf-8"))
 
 
+#R115: shard-3 function tag
 def extract_source_files_from_analogous_tree(requirements_file: Path, repo_root: Path) -> list[str]:
     req_root = _requirements_root_for_file(requirements_file, repo_root)
     rel_path = requirements_file.relative_to(req_root) if req_root else Path(requirements_file.name)
@@ -131,6 +137,7 @@ def discover_test_files_for_requirements(
     default_results: list[Path] = []
     ui_results: list[Path] = []
 
+    #R015: shard-3 function tag
     def add_path(path: str, lane: str) -> None:
         candidate = (repo_root / path) if not Path(path).is_absolute() else Path(path)
         if not candidate.is_file():
@@ -145,6 +152,7 @@ def discover_test_files_for_requirements(
             seen_default.add(normalized)
             default_results.append(normalized)
 
+    #R015: shard-3 function tag
     def collect_swift_lane(root_dir: str, lane: str, stem: str = "") -> None:
         root_path = repo_root / root_dir
         if not root_path.is_dir():
@@ -154,6 +162,7 @@ def discover_test_files_for_requirements(
                 continue
             add_path(path.relative_to(repo_root).as_posix(), lane)
 
+    #R015: shard-3 function tag
     def add_shell_test(stem: str) -> None:
         if not stem:
             return
@@ -289,6 +298,7 @@ _FUNCTION_TAG_EXCLUDED_DIRS = {
 }
 
 
+#R030: shard-3 function tag
 def _is_function_tag_excluded_dir(name: str) -> bool:
     return (
         name in _FUNCTION_TAG_EXCLUDED_DIRS

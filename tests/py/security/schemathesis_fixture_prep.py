@@ -149,6 +149,7 @@ def tighten_matchy_search_query_params(paths: dict):
 
 def tighten_transactions_query_params(paths: dict):
     #R010: Tighten transaction query constraints for semantically valid dates.
+    #R050: Tighten transactions query params with fixtures for schemathesis boundary coverage.
     operation = paths.get("/v1/transactions", {}).get("get", {})
     parameters = operation.get("parameters", [])
     if not isinstance(parameters, list):

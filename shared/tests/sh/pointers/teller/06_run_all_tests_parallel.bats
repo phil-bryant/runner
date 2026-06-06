@@ -1,13 +1,16 @@
 #!/usr/bin/env bats
 
+#R001: shard-3 function tag
 src() {
   printf '%s' "${RUNBOOK_REPO_ROOT}/06_run_all_tests_parallel.sh"
 }
 
+#R001: shard-3 function tag
 runner_src() {
   printf '%s' "${RUNBOOK_REPO_ROOT}/../runner/07_run_all_tests_parallel.sh"
 }
 
+#R001: shard-3 function tag
 profile_path() {
   printf 'config/runbook/%s.env' "${RUNBOOK_REPO_NAME}"
 }

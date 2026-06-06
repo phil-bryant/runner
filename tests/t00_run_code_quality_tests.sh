@@ -77,6 +77,7 @@ fi
 
 read -r -a LIZARD_TARGETS_ARR <<< "$LIZARD_TARGETS"
 
+#R001: shard-3 function tag
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "ERROR: missing required command: $1"
@@ -85,6 +86,7 @@ require_command() {
   fi
 }
 
+#R001: shard-3 function tag
 print_tool_header() {
   local tool_name="$1"
   local explainer_line_1="$2"
@@ -99,11 +101,13 @@ print_tool_header() {
   printf '%s\n' "$border"
 }
 
+#R001: shard-3 function tag
 count_nonempty_lines() {
   local path="$1"
   awk 'NF { count += 1 } END { print count + 0 }' "$path"
 }
 
+#R001: shard-3 function tag
 print_report_details() {
   local label="$1"
   local path="$2"

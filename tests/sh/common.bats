@@ -1,11 +1,13 @@
 #!/usr/bin/env bats
 # Self-contained shell unit tests for src/scripts/security/common.sh (shared security helper library).
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   SRC="${REPO_ROOT}/src/scripts/security/common.sh"
 }
 
+#R001: shard-3 function tag
 defines() {
   bash -c "source '${SRC}' >/dev/null 2>&1; declare -F '$1' >/dev/null"
 }

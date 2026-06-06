@@ -3,6 +3,7 @@
 # asserts a real behavioral token in the orchestrator source so the requirement
 # IDs stay mapped to genuine implementation, not boilerplate.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   SCRIPT="${REPO_ROOT}/07_run_all_tests_parallel.sh"

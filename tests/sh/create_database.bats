@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Self-contained shell unit tests for src/sql/sqlite/create_database.sql.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   SQL="${REPO_ROOT}/src/sql/sqlite/create_database.sql"

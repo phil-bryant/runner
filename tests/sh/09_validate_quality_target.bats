@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Companion tests for 09_validate_quality_target.sh requirements traceability.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   SCRIPT="${REPO_ROOT}/09_validate_quality_target.sh"

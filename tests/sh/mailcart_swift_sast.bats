@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Self-contained shell unit tests for src/scripts/prereq_hooks/mailcart_swift_sast.sh (native-Swift SAST prereq hook).
 
+#R055: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   SRC="${REPO_ROOT}/src/scripts/prereq_hooks/mailcart_swift_sast.sh"

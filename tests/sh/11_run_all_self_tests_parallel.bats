@@ -3,6 +3,7 @@
 # shared shim, selects the runner profile, and delegates to the orchestrator
 # golden. Behavior of the golden itself is tested under its own requirements.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   POINTER="${REPO_ROOT}/11_run_all_self_tests_parallel.sh"

@@ -4,6 +4,7 @@
 # argument handling, output filtering, and failure propagation are exercised
 # without a real teller venv or 1Password access.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   FIXTURE="$(cd "$(mktemp -d)" && pwd -P)"
@@ -17,6 +18,7 @@ setup() {
   HELPER="${REPO}/src/scripts/db_profile_export.sh"
 }
 
+#R001: shard-3 function tag
 teardown() {
   if [ -n "${FIXTURE:-}" ] && [ -d "${FIXTURE}" ]; then
     rm -rf "${FIXTURE}" || true

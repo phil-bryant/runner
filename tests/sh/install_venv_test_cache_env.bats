@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Self-contained shell unit tests for src/scripts/install_venv_test_cache_env.sh (runner engine helper).
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   SRC="${REPO_ROOT}/src/scripts/install_venv_test_cache_env.sh"

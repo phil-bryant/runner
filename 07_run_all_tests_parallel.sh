@@ -26,6 +26,7 @@ SERIALIZE_UI_MUTATION=false
 UI_REGRESSION_PATTERN="${UI_REGRESSION_PATTERN:-macos_ui_regression}"
 MUTATION_LANE_PATTERN="${MUTATION_LANE_PATTERN:-mutation_tests}"
 AV_LANE_PATTERN="${AV_LANE_PATTERN:-run_av_test}"
+#R001: shard-3 function tag
 print_usage() {
   cat <<USAGE
 Usage: $(basename "${BASH_SOURCE[0]}") [--no-ui] [--no-mutation] [--no-av] [-h|--help]
@@ -217,12 +218,14 @@ cleanup_finished=false
 signal_exit_code=""
 
 # Ensure trap cleanup can safely invoke this even before later function definitions.
+#R001: shard-3 function tag
 finish_progress_line() {
   if [[ "$PROGRESS_INLINE" == "true" ]]; then
     printf '\n'
   fi
 }
 
+#R001: shard-3 function tag
 emit_cleanup_line() {
   local message="$1"
   if [[ "$PROGRESS_INLINE" == "true" ]]; then
@@ -232,6 +235,7 @@ emit_cleanup_line() {
 }
 
 # Move superseded artifacts to ~/.Trash instead of deleting (repository no-rm policy).
+#R001: shard-3 function tag
 safe_move_to_trash() {
   local path="$1" trash_dir=""
   [[ -e "$path" ]] || return 0
@@ -241,6 +245,7 @@ safe_move_to_trash() {
 }
 
 # Run a command as its own session leader so the whole process tree stays reachable for cleanup.
+#R001: shard-3 function tag
 run_in_new_session() {
   if command -v setsid >/dev/null 2>&1; then
     setsid "$@"
@@ -254,6 +259,7 @@ os.execvp(sys.argv[1], sys.argv[1:])' "$@"
 }
 
 # Recursively signal a process and all of its descendants (handles arbitrary depth).
+#R001: shard-3 function tag
 kill_process_tree() {
   local signal="$1" root_pid="$2" child
   [[ -n "$root_pid" && "$root_pid" -ne $$ ]] || return 0
@@ -274,6 +280,7 @@ release_single_run_lock() {
   fi
 }
 
+#R001: shard-3 function tag
 acquire_single_run_lock() {
   local existing_lock_pid=""
   if ( set -o noclobber; echo "$$" > "$LOCK_FILE" ) 2>/dev/null; then
@@ -320,6 +327,7 @@ terminate_child_checks() {
   done
 }
 
+#R001: shard-3 function tag
 stop_on_signal() {
   local exit_code="$1"
   if [[ "$cleanup_finished" == "true" ]]; then
@@ -333,6 +341,7 @@ stop_on_signal() {
   exit "$exit_code"
 }
 
+#R001: shard-3 function tag
 check_for_signal() {
   if [[ -n "$signal_exit_code" ]]; then
     stop_on_signal "$signal_exit_code"
@@ -349,6 +358,7 @@ if [[ -d "$DB_LANE_LOCK_DIR" ]]; then
   safe_move_to_trash "$DB_LANE_LOCK_DIR"
 fi
 
+#R001: shard-3 function tag
 render_progress() {
   local completed="$1"
   local total="$2"
@@ -373,6 +383,7 @@ render_progress() {
   fi
 }
 
+#R001: shard-3 function tag
 emit_result_line() {
   local message="$1"
   if [[ "$PROGRESS_INLINE" == "true" ]]; then
@@ -382,6 +393,7 @@ emit_result_line() {
   echo "$message"
 }
 
+#R001: shard-3 function tag
 resolve_lane_test_count() {
   local completed_script="$1"
   local log_file="$2"
@@ -411,6 +423,7 @@ resolve_lane_test_count() {
   printf '%s\n' "$lane_test_count"
 }
 
+#R001: shard-3 function tag
 derive_failure_reason() {
   local log_file="$1"
   if [[ ! -f "$log_file" ]]; then
@@ -440,6 +453,7 @@ derive_failure_reason() {
   echo "nonzero-exit"
 }
 
+#R001: shard-3 function tag
 print_failure_excerpt() {
   local log_file="$1"
   if [[ ! -f "$log_file" ]]; then
@@ -449,6 +463,7 @@ print_failure_excerpt() {
   awk 'NF { lines[count % 3] = $0; count++ } END { start = (count > 3 ? count - 3 : 0); for (i = start; i < count; i++) { idx = i % 3; print "     " lines[idx]; } }' "$log_file"
 }
 
+#R001: shard-3 function tag
 print_cleanup_provenance() {
   local log_file="$1"
   local cleanup_file="${log_file}.cleanup"
@@ -490,6 +505,7 @@ run_lane_worker() {
   if [[ "$script" == *verify_macos_crash_test.sh && "$crash_check_delay" =~ ^[0-9]+$ && "$crash_check_delay" -gt 0 ]]; then
     sleep "$crash_check_delay"
   fi
+  #R001: shard-3 function tag
   run_lane() {
     if [[ "$script" == *deploy_database_verification_test.sh || "$script" == *run_sql_unit_tests.sh || "$script" == *classification_persistence_verification_test.sh || "$script" == *run_dynamic_security_tests.sh ]]; then
       if [[ "$script" == *classification_persistence_verification_test.sh ]]; then
@@ -544,6 +560,7 @@ run_lane_worker() {
 export -f run_lane_worker
 export CHECKS_DIR REPORT_DIR SCRIPT_DIR
 
+#R001: shard-3 function tag
 launch_check_script() {
   local script="$1"
   local log="${REPORT_DIR}/${script%.sh}.log"
@@ -642,6 +659,7 @@ recover_missing_completions() {
   done
 }
 
+#R001: shard-3 function tag
 all_checks_have_exit_files() {
   local script="" exit_file=""
   for script in "${ALL_CHECKS[@]}"; do

@@ -4,6 +4,7 @@
 # exists in the script without executing the venv creation (no network, sudo,
 # or external interpreter side effects).
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   SCRIPT="${REPO_ROOT}/02_create_venv.sh"

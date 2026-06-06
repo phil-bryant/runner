@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
 
+#R001: shard-3 function tag
 src() {
   printf '%s' "${RUNBOOK_REPO_ROOT}/01_create_venv.sh"
 }

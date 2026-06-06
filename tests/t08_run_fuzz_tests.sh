@@ -30,6 +30,7 @@ fi
 FUZZ_SUMMARY="${REPORT_DIR}/fuzz-summary.json"
 mkdir -p "$REPORT_DIR"
 
+#R001: shard-3 function tag
 print_runner_header() {
   local runner_name="$1"
   local explainer_line_1="$2"

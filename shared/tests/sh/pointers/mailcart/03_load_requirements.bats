@@ -1,9 +1,11 @@
 #!/usr/bin/env bats
 
+#R001: shard-3 function tag
 src() {
   printf '%s' "${RUNBOOK_REPO_ROOT}/03_load_requirements.sh"
 }
 
+#R001: shard-3 function tag
 profile_path() {
   printf 'config/runbook/%s.env' "${RUNBOOK_REPO_NAME}"
 }

@@ -4,6 +4,7 @@ from pathlib import Path
 from traceability import discovery
 
 
+#R001: shard-3 function tag
 def _clear_root_env(monkeypatch):
     for name in (
         "TRACEABILITY_REQUIREMENTS_ROOTS",
@@ -88,3 +89,83 @@ def test_function_tag_candidate_files_prunes_excluded_and_nested_repos(tmp_path)
     assert "tests/keep.sh" in files
     assert not any(f.startswith("proj-venv/") for f in files)
     assert not any(f.startswith("subrepo/") for f in files)
+
+
+import ast
+
+
+#R065: shard-3 function tag
+def _extract_traceability_env_knobs_from_source(source_text: str) -> set[str]:
+    knobs: set[str] = set()
+    tree = ast.parse(source_text)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            continue
+        owner = node.func.value
+        if (
+            isinstance(owner, ast.Attribute)
+            and owner.attr == "environ"
+            and isinstance(owner.value, ast.Name)
+            and owner.value.id == "os"
+        ):
+            knobs.add(node.args[0].value)
+    return {name for name in knobs if name.startswith("TRACEABILITY_") or name == "SHELL_BATS_ROOTS"}
+
+
+def test_traceability_weakening_knob_surface_locked():
+    #R065-T01: traceability env-knob surface remains scope-root only.
+    base = Path(__file__).resolve().parent / "traceability"
+    observed: set[str] = set()
+    for name in ("discovery.py", "parsing.py", "verification.py"):
+        observed.update(_extract_traceability_env_knobs_from_source((base / name).read_text(encoding="utf-8")))
+    expected = {
+        "TRACEABILITY_REQUIREMENTS_ROOTS",
+        "TRACEABILITY_TEST_ROOTS",
+        "SHELL_BATS_ROOTS",
+    }
+    assert observed == expected
+
+
+def test_parse_root_list_dedup_and_normalize(tmp_path):
+    #R100-T01: configured root-list parsing de-duplicates and normalizes roots.
+    roots = discovery._parse_root_list("a:a,b\n c", tmp_path)
+    assert len(roots) == 3
+
+
+def test_list_shell_test_roots_override_and_default(tmp_path, monkeypatch):
+    #R105-T01: shell-test roots honor overrides and default to tests/sh.
+    _clear_root_env(monkeypatch)
+    assert discovery.list_shell_test_roots(tmp_path) == [tmp_path / "tests/sh"]
+    monkeypatch.setenv("TRACEABILITY_TEST_ROOTS", "alt")
+    assert discovery.list_shell_test_roots(tmp_path) == [tmp_path / "alt"]
+
+
+def test_requirements_root_for_file_resolution(tmp_path, monkeypatch):
+    #R110-T01: requirements-root ownership resolves the matching configured root.
+    _clear_root_env(monkeypatch)
+    root_a = tmp_path / "reqA"
+    root_a.mkdir()
+    monkeypatch.setenv("TRACEABILITY_REQUIREMENTS_ROOTS", root_a.as_posix())
+    doc = root_a / "x-requirements.md"
+    doc.write_text("# x\n", encoding="utf-8")
+    assert discovery._requirements_root_for_file(doc, tmp_path) == root_a
+
+
+def test_extract_source_files_from_analogous_tree_by_stem(tmp_path):
+    #R115-T01: analogous-tree discovery resolves source files by requirements stem.
+    req_dir = tmp_path / "requirements"
+    req_dir.mkdir()
+    doc = req_dir / "foo-requirements.md"
+    doc.write_text("# x\n", encoding="utf-8")
+    src = req_dir / "foo.py"
+    src.write_text("x = 1\n", encoding="utf-8")
+    discovered = discovery.extract_source_files_from_analogous_tree(doc, tmp_path)
+    assert "requirements/foo.py" in discovered

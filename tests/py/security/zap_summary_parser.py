@@ -5,6 +5,7 @@ import re
 import sys
 
 
+#R001: shard-3 function tag
 def extract_count(content: str, risk_code: str) -> int:
     pattern = (
         r'class="risk-' + re.escape(risk_code) + r'".*?'
@@ -16,6 +17,7 @@ def extract_count(content: str, risk_code: str) -> int:
     return int(match.group(1))
 
 
+#R005: shard-3 function tag
 def main() -> int:
     if len(sys.argv) != 3:
         raise SystemExit("usage: zap_summary_parser.py <zap_html> <summary_json>")

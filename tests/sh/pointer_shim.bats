@@ -3,6 +3,7 @@
 # A throwaway fixture mirrors the runner/<repo> layout so the shim resolves paths
 # exactly as it does in the real monorepo.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   SHIM_SRC="${REPO_ROOT}/src/scripts/pointer_shim.sh"
@@ -30,6 +31,7 @@ GOLD
   mkdir -p "${FIXTURE}/demo/tests"
 }
 
+#R001: shard-3 function tag
 teardown() {
   if [ -n "${FIXTURE:-}" ] && [ -d "${FIXTURE}" ]; then
     mv "${FIXTURE}" "${BATS_TEST_TMPDIR:-${TMPDIR:-/tmp}}/used.$$.$RANDOM" || true
@@ -37,6 +39,7 @@ teardown() {
 }
 
 # Writes a top-level pointer at demo/<name> that sources the shim and runs <body>.
+#R001: shard-3 function tag
 write_top_pointer() {
   local name="$1" profile="$2" body="$3"
   {
@@ -49,6 +52,7 @@ write_top_pointer() {
 }
 
 # Writes a tests/ pointer at demo/tests/<name> that sources the shim and runs <body>.
+#R001: shard-3 function tag
 write_tests_pointer() {
   local name="$1" profile="$2" body="$3"
   {

@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Unit tests for tests/t01_run_av_test.sh soft-pass and infection gating behavior.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   AV_SCRIPT="${REPO_ROOT}/tests/t01_run_av_test.sh"
@@ -36,6 +37,7 @@ EOF
   chmod +x "${FAKE_BIN_DIR}/clamscan"
 }
 
+#R001: shard-3 function tag
 run_av_script() {
   local report_dir="$1"
   shift
@@ -47,6 +49,7 @@ run_av_script() {
   "$AV_SCRIPT"
 }
 
+#R001: shard-3 function tag
 @test "soft-passes scan errors at or below threshold when infections are zero" {
   report_dir="${BATS_TEST_TMPDIR}/reports-soft-pass"
   run run_av_script "$report_dir" env \
@@ -75,6 +78,7 @@ PY
   [ "$status" -eq 0 ]
 }
 
+#R001: shard-3 function tag
 @test "fails when scan errors exceed threshold even with zero infections" {
   report_dir="${BATS_TEST_TMPDIR}/reports-threshold-fail"
   run run_av_script "$report_dir" env \
@@ -102,6 +106,7 @@ PY
   [ "$status" -eq 0 ]
 }
 
+#R001: shard-3 function tag
 @test "infection gate remains enforced when infected files are detected" {
   report_dir="${BATS_TEST_TMPDIR}/reports-infected"
   run run_av_script "$report_dir" env \

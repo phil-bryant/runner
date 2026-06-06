@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Companion tests for 08_report_quality_trends.sh requirements traceability.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   SCRIPT="${REPO_ROOT}/08_report_quality_trends.sh"

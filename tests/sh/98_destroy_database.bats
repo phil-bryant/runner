@@ -3,6 +3,7 @@
 # Each test asserts the implementing tokens physically exist in the source
 # without executing any teardown (no psql, 1psa, database, or filesystem side effects).
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   SCRIPT="${REPO_ROOT}/98_destroy_database.sh"

@@ -4,6 +4,7 @@
 # assert that the implementing behavior exists in the source rather than
 # executing it. Each @test maps 1:1 to a numbered requirement test case.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   SCRIPT="${REPO_ROOT}/01_install_prerequisites.sh"

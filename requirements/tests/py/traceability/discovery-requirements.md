@@ -41,7 +41,33 @@ Design: `list_function_tag_candidate_files` walks the repo for analyzable source
 Tests:
 - R030-T01: Verify analyzable files are listed while an excluded dir and a nested git repo are pruned.
 
+R065  Statement: Traceability env-knob surface is locked to scope-root knobs.
+Design: `list_requirements_roots` and `list_shell_test_roots` are the engine's env surface (`TRACEABILITY_REQUIREMENTS_ROOTS`, `TRACEABILITY_TEST_ROOTS`, `SHELL_BATS_ROOTS`) and are contract-locked by discovery tests.
+Tests:
+- R065-T01: Verify only approved scope-root traceability env knobs are present across engine modules.
+
+R100  Statement: Root-list parsing normalizes and de-duplicates colon/comma/newline configured roots.
+Design: `_parse_root_list` parses configured root lists, resolves repo-relative entries, and de-duplicates normalized paths.
+Tests:
+- R100-T01: Verify configured root-list parsing de-duplicates and normalizes repo-relative roots.
+
+R105  Statement: Shell-test roots resolve from dedicated env knobs with deterministic defaults.
+Design: `list_shell_test_roots` resolves `TRACEABILITY_TEST_ROOTS`/`SHELL_BATS_ROOTS`, defaulting to `tests/sh`.
+Tests:
+- R105-T01: Verify shell-test root resolution honors overrides and defaults to tests/sh.
+
+R110  Statement: Requirements root ownership resolution maps docs to configured roots.
+Design: `_requirements_root_for_file` returns the configured requirements root that contains a document path.
+Tests:
+- R110-T01: Verify requirements-root ownership resolution returns the matching configured root.
+
+R115  Statement: Source discovery via analogous trees resolves by requirements stem.
+Design: `extract_source_files_from_analogous_tree` finds source files by matching the requirements stem in analogous directories.
+Tests:
+- R115-T01: Verify analogous-tree source discovery resolves source files by requirements stem.
+
 ## Changelog
 
+- 2026-06-06: Added R065 env-knob-surface contract (relocated from verification) and R100-R115 discovery helper requirements.
 - 2026-06-06: Added R030 (candidate-file enumeration) for the opt-in per-function tag-coverage gate.
 - 2026-06-06: Created with the self-coverage rule (R025) so the engine no longer silently excludes itself from coverage.

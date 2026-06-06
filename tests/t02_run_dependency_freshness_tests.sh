@@ -37,6 +37,7 @@ POSTGRES_SERVER_PSA_FIELD="${POSTGRES_SERVER_PSA_FIELD:-password}"
 
 mkdir -p "$REPORT_DIR"
 
+#R001: shard-3 function tag
 python_interpreter_usable() {
   local candidate="$1"
   [[ -x "$candidate" ]] || return 1

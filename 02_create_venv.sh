@@ -41,6 +41,7 @@ fi
 #R020: Name venv as <repo-basename>-venv (VENV_NAME from runbook_common).
 VENV_DIR="$VENV_NAME"
 
+#R001: shard-3 function tag
 print_activation_hint() {
     echo ""
     echo "To activate the virtual environment, run:"

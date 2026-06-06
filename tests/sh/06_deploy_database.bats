@@ -4,6 +4,7 @@
 # exists in the script without executing any deploy (no psql, sqlcipher, 1psa,
 # database, or network side effects).
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   SCRIPT="${REPO_ROOT}/06_deploy_database.sh"

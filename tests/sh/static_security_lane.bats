@@ -1,17 +1,20 @@
 #!/usr/bin/env bats
 # Static unit tests for src/scripts/security/run_static_security_lane.sh security baseline behavior.
 
+#R120: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   STATIC_LANE="${REPO_ROOT}/src/scripts/security/run_static_security_lane.sh"
 }
 
+#R120: shard-3 function tag
 @test "static security lane script remains shell-parseable" {
   #R120-T01
   run bash -n "$STATIC_LANE"
   [ "$status" -eq 0 ]
 }
 
+#R120: shard-3 function tag
 @test "static security lane defines secure pip baseline defaults" {
   #R120-T02
   run python3 - <<'PY' "$STATIC_LANE"
@@ -42,6 +45,7 @@ PY
   [ "$status" -eq 0 ]
 }
 
+#R120: shard-3 function tag
 @test "static security lane enforces secure pip baseline before pip-audit" {
   #R120-T03
   run python3 - <<'PY' "$STATIC_LANE"

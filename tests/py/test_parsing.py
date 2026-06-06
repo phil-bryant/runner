@@ -255,3 +255,131 @@ def test_find_unscoped_numbered_test_tags():
     issues = parsing.find_unscoped_numbered_test_tags(text)
     assert any("R001-T01" in i for i in issues)
     assert not any("R005-T01" in i for i in issues)
+
+
+def test_detect_header_bundle_tags_flags_bundled_header():
+    #R100-T01: bundled header tags are detected while scoped lines are ignored.
+    bundled = HASH + "R001 " + HASH + "R005 " + HASH + "R010\n"
+    scoped = HASH + "R001: scoped\n"
+    assert parsing.detect_header_bundle_tags(bundled) is not None
+    assert parsing.detect_header_bundle_tags(scoped) is None
+
+
+def test_extract_source_files_from_requirements_reads_scope():
+    #R105-T01: scope extraction returns allowed source paths only.
+    text = "## Scope\n`src/x.py` and `README.md`\n## Next\nR001  Statement: x\n"
+    assert parsing.extract_source_files_from_requirements(text) == ["src/x.py"]
+
+
+def test_extract_ui_required_ids_detects_ui_hint():
+    #R110-T01: UI-hinted requirement statements are detected.
+    text = "R001 Statement: run xcuitest smoke\nR005 Statement: backend only\n"
+    assert parsing.extract_ui_required_ids(text) == ["R001"]
+
+
+def test_ts_adapters_normalize_method_and_property_nodes():
+    #R115-T01: tree-sitter adapter helpers normalize callable/property node forms.
+    class Point:
+        row = 8
+
+    class Node:
+        type = "function_definition"
+        children = []
+
+        @staticmethod
+        def kind():
+            return "function_definition"
+
+        @staticmethod
+        def start_position():
+            return Point()
+
+    node = Node()
+    assert parsing._ts_kind(node) == "function_definition"
+    assert parsing._point_row(parsing._ts_attr(node, "start_position")) == 8
+
+
+def test_brace_and_indentation_fallback_ranges():
+    #R120-T01: brace and indentation fallback detectors produce block ranges.
+    lines = ["@test x {", " echo hi", "}"]
+    assert parsing._brace_ranges(lines, parsing._BATS_START_RE) == [(1, 3)]
+    py_lines = ["def test_a():", "    pass", "def test_b():", "    pass"]
+    ranges = parsing._python_indentation_ranges(py_lines)
+    assert ranges and ranges[0][0] == 1
+
+
+def test_python_test_block_ranges_uses_ast_then_falls_back():
+    #R125-T01: python test-block extraction uses ast and falls back on syntax errors.
+    ok = "def test_a():\n    return 1\n"
+    assert parsing._python_test_block_ranges(ok, ok.splitlines()) == [(1, 2)]
+    bad = "def test_a(:\n  pass\n"
+    assert parsing._python_test_block_ranges(bad, bad.splitlines())
+
+
+def test_bats_to_bash_rewrite_is_line_preserving_and_ranges():
+    #R130-T01: bats rewrite is line-preserving and parser-backed ranges are extracted.
+    pytest.importorskip("tree_sitter_language_pack")
+    text = '@test "x" {\n  :\n}\n'
+    rewritten = parsing._bats_to_bash(text)
+    assert len(rewritten.splitlines()) == len(text.splitlines())
+    assert parsing._bats_test_block_ranges(text, text.splitlines())
+
+
+def test_swift_test_block_ranges_by_prefix():
+    #R135-T01: swift test-prefixed ranges are discovered while helpers are ignored.
+    pytest.importorskip("tree_sitter_language_pack")
+    text = "class X {\n  func testFoo() {}\n  func helper() {}\n}\n"
+    ranges = parsing._swift_test_block_ranges(text, text.splitlines())
+    assert ranges
+
+
+def test_test_block_line_ranges_dispatch_and_none():
+    #R140-T01: suffix dispatch returns ranges for supported types and None for unsupported.
+    py_text = "def test_x():\n    pass\n"
+    assert parsing._test_block_line_ranges(".py", py_text, py_text.splitlines())
+    assert parsing._test_block_line_ranges(".txt", "x", ["x"]) is None
+
+
+def test_numbered_tags_by_line_and_line_in_ranges():
+    #R145-T01: numbered tags expose line numbers and range-membership checks.
+    lines = [HASH + "R100-T01: x", "pass"]
+    tags = parsing._numbered_tags_by_line(lines)
+    assert tags == [(1, "R100-T01")]
+    assert parsing._line_in_ranges([(1, 1)], 1) is True
+    assert parsing._line_in_ranges([(2, 3)], 1) is False
+
+
+def test_python_function_spans_enumerates_all_defs():
+    #R150-T01: python spans include nested/private/dunder defs and return None on syntax errors.
+    text = (
+        "class C:\n"
+        "    def __init__(self):\n"
+        "        pass\n"
+        "    def _h(self):\n"
+        "        def inner():\n"
+        "            return 1\n"
+        "        return inner\n"
+    )
+    spans = parsing._python_function_spans(text)
+    names = [name for name, _start, _end in spans or []]
+    assert "__init__" in names and "_h" in names and "inner" in names
+    assert parsing._python_function_spans("def broken(:\n") is None
+
+
+def test_iter_function_spans_dispatch():
+    #R155-T01: function span dispatch returns spans for Python and None for unsupported suffixes.
+    assert parsing.iter_function_spans(".py", "def x():\n    pass\n")
+    assert parsing.iter_function_spans(".txt", "hello") is None
+
+
+def test_leading_comment_start_and_function_is_tagged():
+    #R160-T01: leading-comment tag windows are honored for function tagging checks.
+    lines = [HASH + "R160: scoped", "def x():", "    return 1"]
+    assert parsing._leading_comment_start(lines, 2) == 1
+    assert parsing.function_is_tagged(lines, 2, 3) is True
+
+
+def test_format_bulleted_prefixes_items():
+    #R165-T01: bulleted formatting uses default and custom prefixes.
+    assert parsing.format_bulleted(["a", "b"]) == "  - a\n  - b"
+    assert parsing.format_bulleted(["a"], prefix="* ") == "* a"

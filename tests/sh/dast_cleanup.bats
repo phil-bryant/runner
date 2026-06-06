@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Self-contained static unit tests for src/scripts/dast_cleanup.py (runner engine helper).
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   SRC="${REPO_ROOT}/src/scripts/dast_cleanup.py"

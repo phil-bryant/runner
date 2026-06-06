@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   SRC="${REPO_ROOT}/src/scripts/security/generate_backup_gpg_keys.sh"

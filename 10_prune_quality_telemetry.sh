@@ -43,6 +43,7 @@ if [[ "$total_count" -le "$KEEP_COUNT" ]]; then
 fi
 
 # Move pruned (superseded) telemetry summaries to ~/.Trash instead of deleting (no-rm policy).
+#R001: shard-3 function tag
 safe_move_to_trash() {
   local path="$1" trash_dir=""
   [[ -e "$path" || -L "$path" ]] || return 0

@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   HELPER="${REPO_ROOT}/src/scripts/parallel_lane_test_count.py"
@@ -7,6 +8,7 @@ setup() {
   mkdir -p "${TEST_REPO}/artifacts/parallel"
 }
 
+#R001: shard-3 function tag
 run_count() {
   local lane_script="$1"
   local lane_log="$2"

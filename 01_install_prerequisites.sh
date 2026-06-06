@@ -44,6 +44,7 @@ ZAP_CLI_PATH="${ZAP_CLI_PATH:-${ZAP_APP_PATH}/Contents/MacOS/ZAP.sh}"
 #R020: Default sudo credential item/field, overridable via environment.
 PSA_INSTALL_SUDO_ITEM="${PSA_INSTALL_SUDO_ITEM:-odus}"
 
+#R001: shard-3 function tag
 print_header() {
     echo "============================================================"
     echo "${PREREQ_BANNER}"

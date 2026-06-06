@@ -17,6 +17,7 @@ FAIL_ON_INFECTED="${AV_FAIL_ON_INFECTED:-true}"
 
 mkdir -p "$REPORT_DIR"
 
+#R001: shard-3 function tag
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "❌ Missing required command: $1"
@@ -40,6 +41,7 @@ print_tool_header() {
   printf '%s\n' "$border"
 }
 
+#R001: shard-3 function tag
 resolve_target_abs_path() {
   local target_path="$1"
   if [[ -d "$target_path" ]]; then
@@ -55,6 +57,7 @@ resolve_target_abs_path() {
   )
 }
 
+#R001: shard-3 function tag
 detect_clamav_db_dir() {
   local brew_prefix=""
   if [[ -n "${CLAMAV_DB_DIR:-}" ]]; then
@@ -124,6 +127,7 @@ if status == "stale":
 PY
 }
 
+#R001: shard-3 function tag
 run_freshclam_refresh() {
   local clamav_report="$1"
   if ! command -v freshclam >/dev/null 2>&1; then
@@ -217,6 +221,7 @@ run_clamscan_once() {
   return "$scan_exit"
 }
 
+#R001: shard-3 function tag
 print_clamav_error_excerpt() {
   local report_path="$1"
   local max_lines="${2:-5}"
@@ -248,6 +253,7 @@ if error_lines:
 PY
 }
 
+#R001: shard-3 function tag
 ensure_freshclam_config() {
   local conf_path=""
   local sample_path=""

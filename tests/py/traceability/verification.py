@@ -33,6 +33,7 @@ from .parsing import (
 class TraceabilityVerifier:
     repo_root: Path
 
+    #R140: shard-3 function tag
     def run(self, argv: list[str]) -> int:
         if argv and argv[0] in {"-h", "--help"}:
             print_usage()
@@ -87,6 +88,7 @@ class TraceabilityVerifier:
         print("❌ One or more traceability checks failed.")
         return False
 
+    #R100: shard-3 function tag
     def verify_single_pair_with_tests(self, requirements_file: Path, source_file: Path) -> bool:
         ro = self._handle_requirements_only(requirements_file)
         if ro is not None:
@@ -121,6 +123,7 @@ class TraceabilityVerifier:
             status = False
         return status
 
+    #R105: shard-3 function tag
     def verify_requirements_file_sources(self, requirements_file: Path) -> bool:
         ro = self._handle_requirements_only(requirements_file)
         if ro is not None:
@@ -365,6 +368,7 @@ class TraceabilityVerifier:
         print("  - Anchor each numbered tag in a real test body (def test_*/@test/func test*); unparseable test files are not silently accepted.")
         return False
 
+    #R110: shard-3 function tag
     def verify_numbered_script_requirements_coverage(self) -> bool:
         script_pairs = []
         req_pairs = []
@@ -388,6 +392,7 @@ class TraceabilityVerifier:
         print(format_bulleted(f"{item} (expected requirements/{Path(item).name.split('_', 1)[0]}_*-requirements.md)" for item in missing))
         return False
 
+    #R115: shard-3 function tag
     def verify_numbered_requirement_scope_alignment(self) -> bool:
         failures: list[str] = []
         for req_file in list_requirements_files(self.repo_root):
@@ -419,6 +424,7 @@ class TraceabilityVerifier:
         print(format_bulleted(failures))
         return False
 
+    #R120: shard-3 function tag
     def verify_numbered_script_test_coverage(self) -> bool:
         missing = []
         shell_test_roots = list_shell_test_roots(self.repo_root)
@@ -466,6 +472,7 @@ class TraceabilityVerifier:
         print(format_bulleted(uncovered))
         return False
 
+    #R125: shard-3 function tag
     def _collect_shared_runner_covered_sources(self) -> set[str]:
         covered: set[str] = set()
         runner_root = self._discover_runner_root()
@@ -511,6 +518,7 @@ class TraceabilityVerifier:
         print(format_bulleted(sorted(failures)))
         return False
 
+    #R130: shard-3 function tag
     def collect_ids_from_test_list(self, test_files: list[str]) -> set[str]:
         ids: set[str] = set()
         for test_file in test_files:
@@ -519,6 +527,7 @@ class TraceabilityVerifier:
                 ids.update(extract_source_ids(path.read_text(encoding="utf-8")))
         return ids
 
+    #R130: shard-3 function tag
     def collect_numbered_test_ids_from_list(self, test_files: list[str]) -> tuple[set[str], list[str]]:
         ids: set[str] = set()
         misplaced: list[str] = []
@@ -531,18 +540,21 @@ class TraceabilityVerifier:
             misplaced.extend(file_misplaced)
         return ids, misplaced
 
+    #R135: shard-3 function tag
     def is_locked_source_file(self, source_file: Path) -> bool:
         text = source_file.read_text(encoding="utf-8")
         a = any(line.strip() == "## <AI_MODEL_INSTRUCTION>" for line in text.splitlines())
         b = any(line.strip() == "## DO_NOT_MODIFY_THIS_FILE" for line in text.splitlines())
         return a and b
 
+    #R050: shard-3 function tag
     def _has_mappable_in_repo_source(self, requirements_file: Path) -> bool:
         sources = extract_source_files_from_requirements_path(requirements_file)
         if not sources:
             sources = extract_source_files_from_analogous_tree(requirements_file, self.repo_root)
         return any(self._to_repo_path(source).is_file() for source in sources)
 
+    #R050: shard-3 function tag
     def _is_legitimate_requirements_only(self, requirements_file: Path) -> bool:
         # Requirements-only is only honest when there is genuinely no first-party
         # in-repo source to map (e.g. a staged pre-implementation doc). If real
@@ -582,6 +594,7 @@ class TraceabilityVerifier:
                 in_scope = False
         return False
 
+    #R135: shard-3 function tag
     def verify_locked_exception(self, requirements_file: Path, source_file: Path) -> bool:
         source_text = source_file.read_text(encoding="utf-8")
         if "<AI_MODEL_INSTRUCTION>" not in source_text or "DO_NOT_MODIFY_THIS_FILE" not in source_text:
@@ -600,18 +613,21 @@ class TraceabilityVerifier:
         print(f"✅ PASS (locked-policy): {self._rel(source_file)} verified-with-exception.")
         return True
 
+    #R145: shard-3 function tag
     def _to_repo_path(self, path: str | Path) -> Path:
         p = Path(path)
         if p.is_absolute():
             return p
         return self.repo_root / p
 
+    #R145: shard-3 function tag
     def _rel(self, path: Path) -> str:
         try:
             return path.resolve().relative_to(self.repo_root.resolve()).as_posix()
         except ValueError:
             return str(path)
 
+    #R125: shard-3 function tag
     def _discover_runner_root(self) -> Path | None:
         parent_runner = self.repo_root.parent / "runner"
         if not parent_runner.is_dir():
@@ -621,23 +637,27 @@ class TraceabilityVerifier:
         return parent_runner
 
     @staticmethod
+    #R125: shard-3 function tag
     def _files_identical(left: Path, right: Path) -> bool:
         if left.stat().st_size != right.stat().st_size:
             return False
         return left.read_bytes() == right.read_bytes()
 
     @staticmethod
+    #R110: shard-3 function tag
     def _is_deprecated_path(path: str) -> bool:
         normalized = path.strip()
         return normalized == "deprecated" or normalized.startswith("deprecated/")
 
 
+#R145: shard-3 function tag
 def tests_inline_from_list(test_files: list[str]) -> str:
     if not test_files:
         return "(none discovered)"
     return ", ".join(test_files)
 
 
+#R140: shard-3 function tag
 def print_usage() -> None:
     print("Usage:")
     print("  ./tests/t04_run_requirements_traceability_tests.sh")

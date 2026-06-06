@@ -61,6 +61,7 @@ def extract_scoped_source_ids(text: str) -> list[str]:
     return sorted(ids)
 
 
+#R100: shard-3 function tag
 def detect_header_bundle_tags(text: str, max_lines: int = 40) -> str | None:
     for idx, raw_line in enumerate(text.splitlines()[:max_lines], start=1):
         total = len(SOURCE_TAG_PATTERN.findall(raw_line))
@@ -70,6 +71,7 @@ def detect_header_bundle_tags(text: str, max_lines: int = 40) -> str | None:
     return None
 
 
+#R105: shard-3 function tag
 def extract_source_files_from_requirements(text: str) -> list[str]:
     files: set[str] = set()
     in_scope = False
@@ -96,6 +98,7 @@ def extract_source_files_from_requirements(text: str) -> list[str]:
     return sorted(files)
 
 
+#R110: shard-3 function tag
 def extract_ui_required_ids(text: str) -> list[str]:
     ids = set()
     for line in text.splitlines():
@@ -182,6 +185,7 @@ _TS_GET_PARSER = None  # None = not yet attempted, False = unavailable, else cal
 _TS_PARSER_CACHE: dict[str, object] = {}
 
 
+#R045: shard-3 function tag
 def _treesitter_parser(language_name: str):
     """Return a cached tree-sitter parser for ``language_name``.
 
@@ -218,10 +222,12 @@ def _treesitter_parser(language_name: str):
 _MISSING = object()
 
 
+#R115: shard-3 function tag
 def _ts_value(value):
     return value() if callable(value) else value
 
 
+#R115: shard-3 function tag
 def _ts_attr(obj, *names):
     for name in names:
         attr = getattr(obj, name, _MISSING)
@@ -230,6 +236,7 @@ def _ts_attr(obj, *names):
     return None
 
 
+#R115: shard-3 function tag
 def _point_row(point) -> int:
     if point is None:
         return 0
@@ -242,10 +249,12 @@ def _point_row(point) -> int:
         return 0
 
 
+#R115: shard-3 function tag
 def _ts_kind(node) -> str | None:
     return _ts_attr(node, "type", "kind")
 
 
+#R115: shard-3 function tag
 def _ts_children(node) -> list:
     children = getattr(node, "children", _MISSING)
     if children is not _MISSING and not callable(children):
@@ -256,6 +265,7 @@ def _ts_children(node) -> list:
     return [node.child(i) for i in range(count)]
 
 
+#R115: shard-3 function tag
 def _ts_node_name(node, source_bytes: bytes) -> str | None:
     name_node = node.child_by_field_name("name")
     if name_node is None:
@@ -274,6 +284,7 @@ def _ts_node_name(node, source_bytes: bytes) -> str | None:
     return None
 
 
+#R045: shard-3 function tag
 def _ts_parse(parser, source_text: str):
     try:
         return parser.parse(source_text.encode("utf-8"))
@@ -281,6 +292,7 @@ def _ts_parse(parser, source_text: str):
         return parser.parse(source_text)
 
 
+#R045: shard-3 function tag
 def _treesitter_block_ranges(
     language_name: str, source_text: str, node_kinds: set[str], name_prefix: str | None = None
 ) -> list[tuple[int, int]] | None:
@@ -310,6 +322,7 @@ def _treesitter_block_ranges(
     return ranges
 
 
+#R120: shard-3 function tag
 def _brace_ranges(lines: list[str], start_re: re.Pattern[str]) -> list[tuple[int, int]]:
     """Fallback block detector: brace-balanced ranges started by ``start_re``.
 
@@ -336,6 +349,7 @@ def _brace_ranges(lines: list[str], start_re: re.Pattern[str]) -> list[tuple[int
     return ranges
 
 
+#R120: shard-3 function tag
 def _python_indentation_ranges(lines: list[str]) -> list[tuple[int, int]]:
     """Fallback block detector for unparseable Python (SyntaxError)."""
     ranges: list[tuple[int, int]] = []
@@ -363,6 +377,7 @@ def _python_indentation_ranges(lines: list[str]) -> list[tuple[int, int]]:
     return ranges
 
 
+#R125: shard-3 function tag
 def _python_test_block_ranges(text: str, lines: list[str]) -> list[tuple[int, int]]:
     try:
         tree = ast.parse(text)
@@ -379,6 +394,7 @@ def _python_test_block_ranges(text: str, lines: list[str]) -> list[tuple[int, in
 _BATS_TEST_DECL_RE = re.compile(r"^(\s*)(?:@test\b.*|bats_test_function\b.*)\{\s*$")
 
 
+#R130: shard-3 function tag
 def _bats_to_bash(text: str) -> str:
     """Rewrite bats ``@test "..." {`` headers into valid bash function decls.
 
@@ -395,6 +411,7 @@ def _bats_to_bash(text: str) -> str:
     return "\n".join(out_lines)
 
 
+#R130: shard-3 function tag
 def _bats_test_block_ranges(text: str, lines: list[str]) -> list[tuple[int, int]]:
     ranges = _treesitter_block_ranges("bash", _bats_to_bash(text), {"function_definition"})
     if ranges is None:
@@ -402,6 +419,7 @@ def _bats_test_block_ranges(text: str, lines: list[str]) -> list[tuple[int, int]
     return ranges
 
 
+#R135: shard-3 function tag
 def _swift_test_block_ranges(text: str, lines: list[str]) -> list[tuple[int, int]]:
     ranges = _treesitter_block_ranges("swift", text, {"function_declaration"}, name_prefix="test")
     if ranges is None:
@@ -409,6 +427,7 @@ def _swift_test_block_ranges(text: str, lines: list[str]) -> list[tuple[int, int
     return ranges
 
 
+#R140: shard-3 function tag
 def _test_block_line_ranges(suffix: str, text: str, lines: list[str]) -> list[tuple[int, int]] | None:
     """Inclusive (start_line, end_line) ranges of test bodies for ``suffix``.
 
@@ -424,6 +443,7 @@ def _test_block_line_ranges(suffix: str, text: str, lines: list[str]) -> list[tu
     return None
 
 
+#R145: shard-3 function tag
 def _numbered_tags_by_line(lines: list[str]) -> list[tuple[int, str]]:
     tags: list[tuple[int, str]] = []
     for idx, line in enumerate(lines, start=1):
@@ -432,6 +452,7 @@ def _numbered_tags_by_line(lines: list[str]) -> list[tuple[int, str]]:
     return tags
 
 
+#R145: shard-3 function tag
 def _line_in_ranges(ranges: list[tuple[int, int]], line_number: int) -> bool:
     return any(start <= line_number <= end for start, end in ranges)
 
@@ -554,6 +575,7 @@ _FUNCTION_TS_LANGS: dict[str, tuple[str, set[str]]] = {
 _FUNCTION_NAME_RE = re.compile(r"(?:func|function)?\s*([A-Za-z_][A-Za-z0-9_]*)\s*[\(\{]")
 
 
+#R150: shard-3 function tag
 def _python_function_spans(text: str) -> list[tuple[str, int, int]] | None:
     try:
         tree = ast.parse(text)
@@ -567,6 +589,7 @@ def _python_function_spans(text: str) -> list[tuple[str, int, int]] | None:
     return spans
 
 
+#R155: shard-3 function tag
 def iter_function_spans(suffix: str, text: str) -> list[tuple[str, int, int]] | None:
     """Return ``(name, start_line, end_line)`` for every function in ``text``.
 
@@ -597,6 +620,7 @@ def iter_function_spans(suffix: str, text: str) -> list[tuple[str, int, int]] | 
     return spans
 
 
+#R160: shard-3 function tag
 def _leading_comment_start(lines: list[str], start_line: int) -> int:
     """First line of the contiguous comment/decorator/blank block above a def.
 
@@ -615,6 +639,7 @@ def _leading_comment_start(lines: list[str], start_line: int) -> int:
     return first
 
 
+#R160: shard-3 function tag
 def function_is_tagged(lines: list[str], start_line: int, end_line: int) -> bool:
     lead = _leading_comment_start(lines, start_line)
     upper = min(end_line, len(lines))
@@ -640,5 +665,6 @@ def find_untagged_functions(path: Path, text: str | None = None) -> list[tuple[s
     return [(name, start) for (name, start, end) in spans if not function_is_tagged(lines, start, end)]
 
 
+#R165: shard-3 function tag
 def format_bulleted(items: Iterable[str], prefix: str = "  - ") -> str:
     return "\n".join(f"{prefix}{item}" for item in items)

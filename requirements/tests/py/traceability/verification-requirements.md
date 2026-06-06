@@ -74,11 +74,6 @@ Tests:
 - R060-T01: Verify the gate fails on an untagged function.
 - R060-T02: Verify legacy opt-out/baseline env knobs do not weaken the gate.
 
-R065  Statement: The traceability env-knob surface is contract-locked to scope knobs only (anti-footgun).
-Design: `test_traceability_weakening_knob_surface_locked` parses `tests/py/traceability/discovery.py`, `tests/py/traceability/parsing.py`, and `tests/py/traceability/verification.py`, enforcing an explicit allowlist of only scope knobs (`TRACEABILITY_REQUIREMENTS_ROOTS`, `TRACEABILITY_TEST_ROOTS`, `SHELL_BATS_ROOTS`). Any added/removed/renamed traceability env knob requires a deliberate contract update in this requirements doc and the matching test.
-Tests:
-- R065-T01: Verify the detected traceability env knob set exactly matches the approved scope-only allowlist.
-
 R070  Statement: Every #Rxxx-Tnn test tag must be anchored to a parser-recognized executable test definition.
 Design: `verify_numbered_test_tag_anchoring` walks each discovered test file and, via `find_unanchored_numbered_test_tags`, fails when any `#Rxxx-Tnn` tag is not inside a parser-enumerated executable test block (Python `def test_*` via the stdlib `ast`; bats `@test`/swift `func test*` via tree-sitter) — the same ast/tree-sitter methodology the per-function tag-coverage gate (R060) uses to recognize a genuine function definition. This closes the prior hole where test files in languages with no parseable test-block convention accepted numbered tags from anywhere: such files now fail closed when they carry numbered tags. The gate is unconditional with no env opt-out.
 Tests:
@@ -86,7 +81,58 @@ Tests:
 - R070-T02: Verify a numbered tag placed outside any test block (module top-level) fails the gate.
 - R070-T03: Verify a test file in a language with no parseable test-block convention fails closed when it carries a numbered tag.
 
+R100  Statement: Single-pair verification runs strict/source/test checks for one requirements-source pair.
+Design: `verify_single_pair_with_tests` executes strict pair checks plus discovered-test traceability and numbered-tag checks.
+Tests:
+- R100-T01: Verify single-pair verification reports pass/fail by combining strict and discovered-test checks.
+
+R105  Statement: Per-doc verification resolves source files and enforces all mapped checks.
+Design: `verify_requirements_file_sources` resolves scope/analogous sources, verifies each, and runs doc-level test checks.
+Tests:
+- R105-T01: Verify per-doc source resolution and enforcement fail when mapped sources are missing.
+
+R110  Statement: Numbered script docs and deprecated-path filtering are enforced.
+Design: `verify_numbered_script_requirements_coverage` checks numbered scripts have numbered docs and `_is_deprecated_path` filters deprecated paths.
+Tests:
+- R110-T01: Verify numbered script coverage fails for missing docs and skips deprecated paths.
+
+R115  Statement: Numbered requirements must scope-match numbered sources.
+Design: `verify_numbered_requirement_scope_alignment` enforces NN requirement docs map to NN source prefixes.
+Tests:
+- R115-T01: Verify numbered requirement scope alignment fails on mismatched numbering.
+
+R120  Statement: Numbered scripts require companion bats coverage.
+Design: `verify_numbered_script_test_coverage` enforces `tests/sh/<stem>.bats` coverage for numbered scripts.
+Tests:
+- R120-T01: Verify numbered script test coverage fails when companion bats files are missing.
+
+R125  Statement: Shared-runner source coverage credit requires byte-identical sources.
+Design: `_collect_shared_runner_covered_sources`, `_discover_runner_root`, and `_files_identical` grant coverage only for identical sources.
+Tests:
+- R125-T01: Verify shared-runner coverage includes only byte-identical source files.
+
+R130  Statement: Test-ID collection gathers #R ids and numbered ids from discovered tests.
+Design: `collect_ids_from_test_list` and `collect_numbered_test_ids_from_list` aggregate ids and misplaced numbered tags.
+Tests:
+- R130-T01: Verify test-id collectors return aggregated ids and misplaced numbered-tag diagnostics.
+
+R135  Statement: Locked-source detection and exception-policy validation are enforced.
+Design: `is_locked_source_file` detects lock markers and `verify_locked_exception` enforces locked-policy requirements.
+Tests:
+- R135-T01: Verify lock markers are detected and locked-policy requirements are validated.
+
+R140  Statement: CLI dispatch and usage handling map invocation shapes to verification outcomes.
+Design: `run` and `print_usage` dispatch `argv` modes (help/all/single-pair) and return process-compatible exit codes.
+Tests:
+- R140-T01: Verify CLI dispatch and return-code mapping across help, all, and single-pair invocations.
+
+R145  Statement: Path/inline helpers normalize repository-relative path handling and test list rendering.
+Design: `_to_repo_path`, `_rel`, and `tests_inline_from_list` normalize path handling and discovered-test display strings.
+Tests:
+- R145-T01: Verify path normalization and inline test-list rendering behavior.
+
 ## Changelog
+- 2026-06-06: Relocated R065 env-knob-surface contract from verification to discovery requirements; verification now carries CLI dispatch under R140.
 - 2026-06-06: Added R070 (numbered-test-tag anchoring gate; every `#Rxxx-Tnn` tag must sit inside a parser-recognized executable test definition via `verify_numbered_test_tag_anchoring`, fail-closed for unparseable test-language files — closes the collect-tags-from-anywhere hole).
 - 2026-06-06: Abolished weakening knobs (`STRICT_TRACEABILITY_FULL_COVERAGE`, `STRICT_TRACEABILITY_NUMBERED_TAGS`, `STRICT_TRACEABILITY_NUMBERED_BULLETS`, `STRICT_TRACEABILITY_FUNCTION_TAGS`, `TRACEABILITY_FUNCTION_TAG_BASELINE`); strict verification gates are now unconditional and R065 locks env surface to scope knobs only.
 - 2026-06-06: Added R065 (weakening-knob surface contract lock; anti-footgun requires deliberate requirements+test updates for any knob-surface change).

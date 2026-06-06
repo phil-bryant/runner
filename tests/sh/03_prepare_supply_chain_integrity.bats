@@ -4,6 +4,7 @@
 # they deliberately do NOT execute pip-compile, require a venv, or touch the
 # network, since the real lane mutates lockfiles and supply-chain artifacts.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   SCRIPT="${REPO_ROOT}/03_prepare_supply_chain_integrity.sh"

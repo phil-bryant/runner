@@ -52,6 +52,7 @@ mkdir -p "${REPO_ROOT}/artifacts/cache/egg-info"
 MUTANTS_LINK_CREATED=false
 
 # Move superseded artifacts (e.g. the mutants symlink) to ~/.Trash instead of deleting (no-rm policy).
+#R001: shard-3 function tag
 safe_move_to_trash() {
   local path="$1" trash_dir=""
   [[ -e "$path" || -L "$path" ]] || return 0
@@ -59,6 +60,7 @@ safe_move_to_trash() {
   mv "$path" "${trash_dir}/$(basename "$path")"
 }
 
+#R001: shard-3 function tag
 cleanup_mutants_link() {
   if [[ "$MUTANTS_LINK_CREATED" == "true" ]] && [[ -L "$ROOT_MUTANTS_LINK" ]]; then
     safe_move_to_trash "$ROOT_MUTANTS_LINK"
@@ -67,6 +69,7 @@ cleanup_mutants_link() {
 
 trap cleanup_mutants_link EXIT
 
+#R001: shard-3 function tag
 print_runner_header() {
   local runner_name="$1"
   local explainer_line_1="$2"

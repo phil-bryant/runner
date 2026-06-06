@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Self-contained shell unit tests for src/scripts/runbook_common.sh (shared golden contract).
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   SRC="${REPO_ROOT}/src/scripts/runbook_common.sh"

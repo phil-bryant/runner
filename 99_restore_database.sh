@@ -22,6 +22,7 @@ GLOBALS_RESTORE_PATH=""
 GPG_HOME=""
 
 cleanup_paths=()
+#R001: shard-3 function tag
 cleanup() {
     local path=""
     for path in "${cleanup_paths[@]:-}"; do
@@ -34,15 +35,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
+#R001: shard-3 function tag
 usage() {
     echo "Usage: $0 [--from /path/to/backup.dump.gpg] [--table table_name|schema.table_name]"
 }
 
+#R001: shard-3 function tag
 is_valid_pg_identifier() {
     local identifier="$1"
     [[ "$identifier" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]]
 }
 
+#R001: shard-3 function tag
 verify_backup_manifest() {
     local backup_path="$1"
     local globals_path="$2"
@@ -95,6 +99,7 @@ latest_backup_path() {
     echo "$latest"
 }
 
+#R001: shard-3 function tag
 encryption_env_var_for_field() {
     local field_name="$1"
     local normalized=""
@@ -103,6 +108,7 @@ encryption_env_var_for_field() {
     echo "POSTGRES_BACKUP_ENCRYPTION_${normalized}"
 }
 
+#R001: shard-3 function tag
 read_backup_encryption_field() {
     local field_name="$1"
     local env_name=""
@@ -115,6 +121,7 @@ read_backup_encryption_field() {
     printf '%s' "$value"
 }
 
+#R001: shard-3 function tag
 init_gpg_home() {
     if [[ -n "$GPG_HOME" ]]; then
         return
@@ -124,6 +131,7 @@ init_gpg_home() {
     chmod 700 "$GPG_HOME"
 }
 
+#R001: shard-3 function tag
 load_backup_decryption_material() {
     local encryption_type=""
     local gpg_private_key=""
@@ -155,6 +163,7 @@ load_backup_decryption_material() {
     gpg --batch --yes --homedir "$GPG_HOME" --pinentry-mode loopback --passphrase "$gpg_passphrase" --import "$private_key_path" >/dev/null 2>&1
 }
 
+#R001: shard-3 function tag
 decrypt_backup_artifact() {
     local encrypted_path="$1"
     local output_path="$2"
@@ -255,6 +264,7 @@ load_profile_exports_from_file() {
     set +a
 }
 
+#R001: shard-3 function tag
 require_nonempty_env() {
     local scope="$1"
     shift

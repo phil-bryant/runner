@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Self-contained static-inspection unit tests for src/scripts/security/run_dynamic_security_lane.sh.
 
+#R001: shard-3 function tag
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   SRC="${REPO_ROOT}/src/scripts/security/run_dynamic_security_lane.sh"
