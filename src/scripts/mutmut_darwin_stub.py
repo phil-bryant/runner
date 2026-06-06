@@ -7,6 +7,7 @@ import sys
 
 class _SetproctitleStub:
     def setproctitle(self, *_args, **_kwargs):
+        #R055: Provide deterministic Darwin-safe setproctitle stub implementation.
         pass
 
 

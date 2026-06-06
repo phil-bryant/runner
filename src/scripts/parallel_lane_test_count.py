@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 def _read_text(path: Path) -> str:
+    #R001: Read lane logs for traceability summary count extraction.
     try:
         return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -17,6 +18,7 @@ def _read_text(path: Path) -> str:
 
 
 def _read_json(path: Path) -> object | None:
+    #R015: Read lane summary JSON artifacts for integer count fields.
     if not path.is_file():
         return None
     try:
@@ -26,6 +28,7 @@ def _read_json(path: Path) -> object | None:
 
 
 def _normalize_report_dir(path_value: str, repo_root: Path) -> Path:
+    #R025: Normalize relative/absolute security report directory paths.
     candidate = Path(path_value.strip())
     if candidate.is_absolute():
         return candidate
@@ -35,6 +38,7 @@ def _normalize_report_dir(path_value: str, repo_root: Path) -> Path:
 #R025: Security lanes resolve the report directory from the lane log `Reports:`
 # line (falling back to a default) and count discovered tool artifact files.
 def _extract_reports_dir_from_log(log_text: str, repo_root: Path, default: Path) -> Path:
+    #R025: Extract security report directory from lane log Reports line.
     match = re.search(r"Reports:\s*(\S+)", log_text)
     if match is None:
         return default
@@ -44,6 +48,7 @@ def _extract_reports_dir_from_log(log_text: str, repo_root: Path, default: Path)
 #R015: Artifact-summary lanes read an integer count field from a summary JSON
 # (fuzz `property_test_count`, mutation `total`).
 def _read_int_field(path: Path, field: str) -> int | None:
+    #R015: Read integer count fields from lane summary JSON payloads.
     payload = _read_json(path)
     if not isinstance(payload, dict):
         return None
@@ -55,6 +60,7 @@ def _read_int_field(path: Path, field: str) -> int | None:
 
 #R001: Traceability lane count comes from the engine `Summary: total=N` line.
 def _parse_traceability_total(log_text: str) -> int | None:
+    #R001: Parse traceability Summary total count from lane logs.
     match = re.search(r"Summary:\s*total=(\d+)\s+pass=\d+\s+fail=\d+", log_text)
     if match is None:
         return None
@@ -63,6 +69,7 @@ def _parse_traceability_total(log_text: str) -> int | None:
 
 #R005: Shell-unit lane count sums bats TAP plan lines, else counts `ok` results.
 def _parse_bats_total(log_text: str) -> int | None:
+    #R005: Parse shell-unit totals from bats TAP plan or ok lines.
     plan_counts = [int(value) for value in re.findall(r"(?m)^\s*1\.\.(\d+)\s*$", log_text)]
     if plan_counts:
         return sum(plan_counts)
@@ -75,6 +82,7 @@ def _parse_bats_total(log_text: str) -> int | None:
 #R010: Python-unit lane count parses the pytest summary (0 for "no tests ran",
 # else summed outcome counts, with a `collected N items` fallback).
 def _parse_pytest_total(log_text: str) -> int | None:
+    #R010: Parse python-unit totals from pytest summary or collected fallback.
     if re.search(r"(?m)no tests ran", log_text):
         return 0
 
@@ -101,6 +109,7 @@ def _parse_pytest_total(log_text: str) -> int | None:
 # present (to avoid trailing `Test run with 0 tests` metadata), with
 # `Test run with N tests` as fallback.
 def _parse_swift_xctest_total(log_text: str) -> int | None:
+    #R012: Parse swift-unit totals from XCTest executed/test-run summaries.
     executed_totals = [
         int(match.group(1))
         for match in re.finditer(r"\bExecuted\s+(\d+)\s+tests?\b", log_text, flags=re.IGNORECASE)
@@ -118,6 +127,7 @@ def _parse_swift_xctest_total(log_text: str) -> int | None:
 
 
 def _parse_numeric_selector_count(selector: str) -> int | None:
+    #R018: Parse numeric selector syntax into unique scenario counts.
     selector = selector.strip()
     if not selector:
         return None
@@ -146,6 +156,7 @@ def _parse_numeric_selector_count(selector: str) -> int | None:
 #R018: macOS UI regression lane count prefers explicit scenario summary output,
 # then selected-step selector hints, then XCTest `Executed N tests` summaries.
 def _parse_macos_ui_regression_total(log_text: str, repo_root: Path) -> int | None:
+    #R018: Parse macOS UI scenario totals from summary, selector, or XCTest fallback.
     summary_match = re.search(r"(?im)scenarios\s+total:\s*.*?\bover\s+(\d+)\s+scenarios?\b", log_text)
     if summary_match is not None:
         return int(summary_match.group(1))
@@ -165,11 +176,13 @@ def _parse_macos_ui_regression_total(log_text: str, repo_root: Path) -> int | No
 
 
 def _count_existing(base_dir: Path, names: list[str]) -> int:
+    #R025: Count existing report artifact files for security lanes.
     return sum(1 for name in names if (base_dir / name).is_file())
 
 
 #R020: Quality lane counts only the non-skipped text sub-check reports present.
 def _count_non_skipped_text_reports(base_dir: Path, names: list[str]) -> int:
+    #R020: Count non-skipped quality report artifacts for lane totals.
     total = 0
     for name in names:
         path = base_dir / name
@@ -182,6 +195,15 @@ def _count_non_skipped_text_reports(base_dir: Path, names: list[str]) -> int:
 
 
 def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int | None:
+    #R001: Resolve traceability lane total from Summary output.
+    #R005: Resolve shell-unit totals from bats TAP plans/results.
+    #R010: Resolve python-unit totals from pytest summary output.
+    #R012: Resolve swift-unit totals from XCTest summary output.
+    #R015: Resolve artifact-summary lane totals from JSON fields.
+    #R018: Resolve macOS UI totals from scenario summaries/selectors.
+    #R020: Resolve quality lane totals from non-skipped sub-check reports.
+    #R025: Resolve security lane totals from discovered report artifacts.
+    #R030: Support unknown-lane fallback handling via shared resolver contract.
     lane_stem = Path(lane_script).stem
     log_text = _read_text(lane_log)
 
@@ -262,6 +284,7 @@ def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int
 
 
 def main() -> int:
+    #R030: Print resolved lane count or safe single-test fallback for unknown lanes.
     parser = argparse.ArgumentParser(description="Resolve per-lane test/check count for PASS output.")
     parser.add_argument("--lane-script", required=True, help="Lane script basename (for example t05_run_shell_unit_tests.sh).")
     parser.add_argument("--lane-log", required=True, help="Path to lane log file.")

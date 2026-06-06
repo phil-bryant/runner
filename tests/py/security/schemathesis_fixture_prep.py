@@ -9,12 +9,14 @@ from urllib.parse import urlparse
 
 
 def fetch_json(url: str, write_token: str, write_token_header_name: str):
+    #R001: Fetch authenticated JSON fixtures from API endpoints with TLS policy.
     req = urllib.request.Request(url, headers={write_token_header_name: write_token}, method="GET")
     with urllib.request.urlopen(req, timeout=20, context=_tls_context_for_url(url)) as resp:
         return json.load(resp)
 
 
 def post_json(url: str, write_token: str, payload: dict, write_token_header_name: str):
+    #R001: Post authenticated JSON fixtures to seed runtime API state.
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -26,6 +28,7 @@ def post_json(url: str, write_token: str, payload: dict, write_token_header_name
 
 
 def _tls_context_for_url(url: str):
+    #R001: Resolve HTTPS TLS context policy for local and cert-file targets.
     parsed = urlparse(url)
     if parsed.scheme.lower() != "https":
         return None
@@ -38,6 +41,7 @@ def _tls_context_for_url(url: str):
 
 
 def set_path_param_example(paths, path: str, method: str, param_name: str, value):
+    #R005: Set OpenAPI path-parameter examples for fixture determinism.
     operation = paths.get(path, {}).get(method, {})
     for param in operation.get("parameters", []):
         if param.get("in") == "path" and param.get("name") == param_name:
@@ -45,6 +49,7 @@ def set_path_param_example(paths, path: str, method: str, param_name: str, value
 
 
 def set_path_param_constraints(paths, path: str, method: str, param_name: str, constraints: dict):
+    #R005: Set OpenAPI path-parameter schema constraints for fixture safety.
     operation = paths.get(path, {}).get(method, {})
     for param in operation.get("parameters", []):
         if param.get("in") == "path" and param.get("name") == param_name:
@@ -54,6 +59,7 @@ def set_path_param_constraints(paths, path: str, method: str, param_name: str, c
 
 
 def set_path_param_enum(paths, path: str, method: str, param_name: str, values):
+    #R005: Set OpenAPI path-parameter enums for seeded fixture values.
     operation = paths.get(path, {}).get(method, {})
     for param in operation.get("parameters", []):
         if param.get("in") == "path" and param.get("name") == param_name:
@@ -65,6 +71,7 @@ def set_path_param_enum(paths, path: str, method: str, param_name: str, values):
 
 
 def set_json_body_example(paths, path: str, method: str, example):
+    #R005: Set requestBody JSON examples for seeded API operations.
     operation = paths.get(path, {}).get(method, {})
     content = operation.get("requestBody", {}).get("content", {})
     app_json = content.get("application/json")
@@ -73,6 +80,7 @@ def set_json_body_example(paths, path: str, method: str, example):
 
 
 def set_json_body_schema(paths, path: str, method: str, schema_obj: dict):
+    #R005: Set requestBody JSON schemas for strict fixture contracts.
     operation = paths.get(path, {}).get(method, {})
     content = operation.get("requestBody", {}).get("content", {})
     app_json = content.get("application/json")
@@ -81,6 +89,7 @@ def set_json_body_schema(paths, path: str, method: str, schema_obj: dict):
 
 
 def set_component_string_min_length(schema: dict, component_name: str, field_names: list[str], min_length: int):
+    #R010: Tighten schema string component minimum lengths for non-noop requests.
     components = schema.get("components", {})
     if not isinstance(components, dict):
         return
@@ -108,6 +117,7 @@ def set_component_string_min_length(schema: dict, component_name: str, field_nam
 
 
 def tighten_matchy_search_query_params(paths: dict):
+    #R010: Tighten search query constraints to avoid schema-valid no-op calls.
     operation = paths.get("/v1/matchy/messages/search", {}).get("get", {})
     parameters = operation.get("parameters", [])
     if not isinstance(parameters, list):
@@ -138,6 +148,7 @@ def tighten_matchy_search_query_params(paths: dict):
 
 
 def tighten_transactions_query_params(paths: dict):
+    #R010: Tighten transaction query constraints for semantically valid dates.
     operation = paths.get("/v1/transactions", {}).get("get", {})
     parameters = operation.get("parameters", [])
     if not isinstance(parameters, list):
@@ -164,6 +175,7 @@ def tighten_transactions_query_params(paths: dict):
 
 
 def choose_first_matching(values, pattern: str) -> str | None:
+    #R015: Select first fixture candidate value matching required pattern.
     matcher = re.compile(pattern)
     for value in values:
         if isinstance(value, str) and value and matcher.fullmatch(value):
@@ -172,6 +184,11 @@ def choose_first_matching(values, pattern: str) -> str | None:
 
 
 def main() -> int:
+    #R001: Orchestrate authenticated fixture fetch/post flows with TLS policy handling.
+    #R005: Apply path/body schema/example mutations for seeded fixture operations.
+    #R010: Enforce tightened query/component constraints to block schema-valid no-ops.
+    #R015: Seed and discover runtime fixture identifiers for downstream operations.
+    #R020: Emit prepared OpenAPI fixture and seed-summary payload artifact.
     if len(sys.argv) != 8:
         raise SystemExit(
             "usage: schemathesis_fixture_prep.py <openapi_url> <base_url> <out_path> <write_token> <write_token_header_name> <matchy_seed_path> <dast_run_id>"
@@ -250,6 +267,7 @@ def main() -> int:
             pass
 
     def create_seed_category(seed_suffix: str):
+        #R015: Seed deterministic category fixtures for contract-driven delete scenarios.
         try:
             created = post_json(
                 f"{base_url}/v1/categories",

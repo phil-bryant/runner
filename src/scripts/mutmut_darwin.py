@@ -24,6 +24,7 @@ except ModuleNotFoundError:
 
 
 def _purge_pycache_under(mutants_root: Path) -> None:
+    #R045: Clear stale mutant pycache trees before subprocess execution.
     stamp = datetime.now().strftime("%Y-%m-%d-%H.%M.%S")
     for cache_dir in mutants_root.rglob("__pycache__"):
         if not cache_dir.is_dir():
@@ -36,6 +37,7 @@ def _purge_pycache_under(mutants_root: Path) -> None:
 
 
 def _repo_root() -> Path:
+    #R030: Resolve target repository root for mutmut task orchestration.
     # Operate on the target repo (RUNBOOK_REPO_ROOT), not the runner directory that hosts this golden.
     env_root = os.environ.get("RUNBOOK_REPO_ROOT")
     root = Path(env_root).resolve() if env_root else Path(__file__).resolve().parent.parent
@@ -43,6 +45,7 @@ def _repo_root() -> Path:
 
 
 def _generate_mutants_serial(*, walk_source_files, create_file_mutants, MutantGenerationStats):
+    #R040: Generate mutants serially without fork-based pools on Darwin.
     # Serial, in-process equivalent of mutmut.create_mutants() with no multiprocessing.Pool.
     # See _prepare for why the fork-based pool is avoided on macOS.
     stats = MutantGenerationStats()
@@ -62,6 +65,7 @@ def _generate_mutants_serial(*, walk_source_files, create_file_mutants, MutantGe
 
 
 def _ensure_mutmut_config_loaded() -> None:
+    #R030: Load mutmut configuration via legacy or modern APIs.
     try:
         from mutmut.__main__ import ensure_config_loaded as legacy_ensure_config_loaded
     except (ImportError, AttributeError):
@@ -92,6 +96,7 @@ def _ensure_mutmut_config_loaded() -> None:
 
 
 def _should_mutate_path(*, mutmut_module, path: Path) -> bool:
+    #R030: Apply mutmut path mutation predicates across config variants.
     config = getattr(mutmut_module, "config", None)
     if config is None:
         try:
@@ -116,6 +121,7 @@ def _should_mutate_path(*, mutmut_module, path: Path) -> bool:
 
 
 def _prepare(root: Path, max_children: int) -> int:
+    #R035: Prepare mutant stats and coverage-selected test metadata.
     os.chdir(root)
     os.environ["MUTANT_UNDER_TEST"] = "mutant_generation"
     from mutmut.__main__ import (
@@ -180,11 +186,13 @@ def _prepare(root: Path, max_children: int) -> int:
 
 
 def _load_stats(root: Path) -> dict:
+    #R035: Load prepared mutmut stats required for execute mode.
     stats_path = root / "mutants" / "mutmut-stats.json"
     return json.loads(stats_path.read_text(encoding="utf-8"))
 
 
 def _positive_int_from_env(name: str, default: int) -> int:
+    #R045: Parse positive integer env knobs for subprocess worker settings.
     raw = os.environ.get(name, str(default)).strip()
     try:
         value = int(raw)
@@ -194,6 +202,7 @@ def _positive_int_from_env(name: str, default: int) -> int:
 
 
 def _tests_for_mutant(stats: dict, mutant_name: str) -> list[str]:
+    #R035: Select ordered covering tests for a specific mutant.
     from mutmut.__main__ import mangled_name_from_mutant_name
 
     key = mangled_name_from_mutant_name(mutant_name)
@@ -203,6 +212,7 @@ def _tests_for_mutant(stats: dict, mutant_name: str) -> list[str]:
 
 
 def _full_suite_tests(root: Path) -> list[str]:
+    #R050: Resolve fallback full-suite rerun test targets.
     # Coverage-selected tests can miss mutations on def/signature lines (e.g. default-argument values).
     # Escalating to mutmut's configured tests_dir keeps reruns bounded to mutation-relevant tests.
     pyproject = root / "pyproject.toml"
@@ -229,6 +239,7 @@ def _full_suite_tests(root: Path) -> list[str]:
 
 
 def _run_mutant_pytest(python: Path, root: Path, mutant_name: str, tests: list[str]) -> int:
+    #R045: Compose deterministic subprocess pytest environment per mutant.
     # Derive the venv from the resolved interpreter (venv/bin/python3) so the driver is repo-agnostic.
     venv = python.parent.parent
     env = os.environ.copy()
@@ -284,10 +295,12 @@ def _run_mutant_pytest(python: Path, root: Path, mutant_name: str, tests: list[s
 
 
 def _should_rerun_mutant(prior: int | None, rerun_codes: set[int | None]) -> bool:
+    #R050: Determine mutant rerun eligibility from prior exit policy.
     return prior in rerun_codes or prior == 33 or (isinstance(prior, int) and prior < 0)
 
 
 def _status_for_exit_code(exit_code: int) -> str:
+    #R050: Map mutant subprocess exit codes to mutmut verdict labels.
     if exit_code in (1, 3):
         return "killed"
     if exit_code == 0:
@@ -304,6 +317,7 @@ def _run_mutant_trial(
     fallback_tests: list[str],
     escalation_tests: list[str],
 ) -> tuple[int, float, bool]:
+    #R050: Execute mutant trial with fallback and escalation rerun policy.
     tests = _tests_for_mutant(stats, mutant_name)
     if not tests:
         if fallback_tests:
@@ -325,6 +339,7 @@ def _collect_mutation_tasks(
     SourceFileMutationData,
     rerun_codes: set[int | None],
 ) -> tuple[dict, list[tuple[Path, str]]]:
+    #R035: Collect executable mutation tasks from prepared mutant metadata.
     metas_by_path: dict = {}
     tasks: list[tuple[Path, str]] = []
     for path in source_paths:
@@ -342,6 +357,7 @@ def _collect_mutation_tasks(
 
 
 def _execute(root: Path, python: Path) -> int:
+    #R050: Orchestrate mutant task execution and persist updated verdict metadata.
     os.chdir(root)
     import mutmut
     from mutmut.__main__ import SourceFileMutationData, load_stats, walk_source_files
@@ -368,6 +384,7 @@ def _execute(root: Path, python: Path) -> int:
         return 1
 
     def run_task(task: tuple[Path, str]) -> tuple[Path, str, int, float, bool]:
+        #R050: Run a single mutant task trial and return persisted verdict tuple.
         path, mutant_name = task
         exit_code, duration, executed = _run_mutant_trial(
             mutant_name=mutant_name,
@@ -411,6 +428,7 @@ def _execute(root: Path, python: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    #R055: Route CLI command to prepare/execute with Darwin-safe startup path.
     # New files/dirs from this process: no group/other access (aligns with umask 007 policy).
     os.umask(0o007)
     parser = argparse.ArgumentParser(description="macOS-safe mutmut driver")

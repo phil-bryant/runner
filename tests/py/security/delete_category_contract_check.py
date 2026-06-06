@@ -10,6 +10,7 @@ import uuid
 
 
 def request_json(method: str, url: str, write_token: str, write_token_header_name: str, body=None):
+    #R001: Execute authenticated JSON requests with normalized success/error payloads.
     data = None if body is None else json.dumps(body).encode("utf-8")
     headers = {"Content-Type": "application/json", write_token_header_name: write_token}
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
@@ -36,6 +37,7 @@ def request_json(method: str, url: str, write_token: str, write_token_header_nam
 
 
 def _tls_context_for_url(url: str):
+    #R005: Apply HTTPS/TLS policy for loopback and cert-file-aware requests.
     parsed = urlparse(url)
     if parsed.scheme.lower() != "https":
         return None
@@ -56,6 +58,7 @@ def _tls_context_for_url(url: str):
 
 
 def _load_schema(schema_path_or_url: str):
+    #R010: Load OpenAPI schema from URL or local file path.
     parsed = urlparse(schema_path_or_url)
     if parsed.scheme.lower() in {"http", "https"}:
         req = urllib.request.Request(schema_path_or_url, method="GET")
@@ -67,6 +70,7 @@ def _load_schema(schema_path_or_url: str):
 
 
 def main() -> int:
+    #R015: Validate delete-category contract lifecycle and emit summary artifact.
     if len(sys.argv) != 7:
         raise SystemExit(
             "usage: delete_category_contract_check.py <schema_path> <base_url> <output_json_path> <write_token> <write_token_header_name> <dast_run_id>"

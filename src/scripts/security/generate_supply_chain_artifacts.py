@@ -27,6 +27,7 @@ HASH_LINE_RE = re.compile(r"^--hash=sha256:([a-fA-F0-9]{64})$")
 
 
 def sha256_file(path: pathlib.Path) -> str:
+    #R110: Hash lockfile/SBOM artifacts for attestation and scaffold metadata.
     digest = hashlib.sha256()
     with path.open("rb") as fh:
         while True:
@@ -38,14 +39,17 @@ def sha256_file(path: pathlib.Path) -> str:
 
 
 def normalize_pypi_name(name: str) -> str:
+    #R115: Normalize package names for canonical purl component identity.
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
 def build_purl(name: str, version: str) -> str:
+    #R115: Build CycloneDX-compatible purl identifiers for components.
     return f"pkg:pypi/{normalize_pypi_name(name)}@{version}"
 
 
 def parse_pinned_requirements(path: pathlib.Path) -> list[dict[str, object]]:
+    #R110: Parse pinned lockfiles with SHA256 hashes into component entries.
     components: list[dict[str, object]] = []
     current: dict[str, object] | None = None
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -79,6 +83,7 @@ def merge_components(
     runtime_components: list[dict[str, object]],
     security_components: list[dict[str, object]],
 ) -> list[dict[str, object]]:
+    #R115: Merge runtime/security components with scope and hash reconciliation.
     merged: dict[tuple[str, str], dict[str, object]] = {}
     for scope, component_list in (("required", runtime_components), ("optional", security_components)):
         for component in component_list:
@@ -107,6 +112,7 @@ def merge_components(
 
 
 def _license_id_from_classifiers(classifiers: list[str]) -> str | None:
+    #R115: Derive SPDX license identifiers from PyPI classifier metadata.
     classifier_to_spdx = {
         "License :: OSI Approved :: Apache Software License": "Apache-2.0",
         "License :: OSI Approved :: BSD License": "BSD-3-Clause",
@@ -125,6 +131,7 @@ def _license_id_from_classifiers(classifiers: list[str]) -> str | None:
 
 #R115: Fetch license metadata from the canonical PyPI JSON endpoint for each component.
 def _percent_encode_path_segment(value: str) -> str:
+    #R115: Percent-encode package/version segments for PyPI metadata URLs.
     safe = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
     encoded_parts: list[str] = []
     for byte in value.encode("utf-8"):
@@ -137,6 +144,7 @@ def _percent_encode_path_segment(value: str) -> str:
 
 #R115: Resolve CycloneDX licenses[] metadata with deterministic UNKNOWN fallback.
 def fetch_component_licenses(name: str, version: str, timeout: float = 5.0) -> list[dict[str, object]]:
+    #R115: Resolve component licenses from PyPI metadata with UNKNOWN fallback.
     package = _percent_encode_path_segment(name)
     release = _percent_encode_path_segment(version)
     url = f"https://pypi.org/pypi/{package}/{release}/json"
@@ -174,6 +182,8 @@ def build_cyclonedx(
     runtime_components: list[dict[str, object]],
     security_components: list[dict[str, object]],
 ) -> dict:
+    #R110: Build CycloneDX SBOM payload from parsed lockfile components.
+    #R115: Enrich components with purl, hashes, scope, and license metadata.
     timestamp = dt.datetime.now(dt.timezone.utc).isoformat()
     serial_number = f"urn:uuid:{uuid.uuid4()}"
     components = []
@@ -225,10 +235,12 @@ def build_cyclonedx(
 
 
 def write_json(path: pathlib.Path, payload: dict) -> None:
+    #R110: Persist generated SBOM and attestation JSON artifacts.
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def has_command(command: str) -> bool:
+    #R120: Detect signing tool availability before cosign invocation paths.
     return subprocess.run(
         ["bash", "-lc", f"command -v {command} >/dev/null 2>&1"],
         check=False,
@@ -240,6 +252,7 @@ def _run_cosign_sign_blob(
     sbom_path: pathlib.Path,
     signature_path: pathlib.Path,
 ) -> bool:
+    #R120: Execute cosign sign-blob and validate signature artifact creation.
     result = subprocess.run(
         [*command, "--output-signature", str(signature_path), str(sbom_path)],
         check=False,
@@ -252,6 +265,7 @@ def _run_cosign_sign_blob(
 def sign_sbom_with_cosign(
     sbom_path: pathlib.Path, signature_path: pathlib.Path
 ) -> tuple[bool, str]:
+    #R120: Route cosign key/keyless signing modes and return signing context errors.
     if not has_command("cosign"):
         return False, "cosign command unavailable"
     cosign_key = os.getenv("COSIGN_KEY", "").strip()
@@ -289,6 +303,7 @@ def sign_sbom_with_cosign(
 def write_scaffold_signature(
     signature_path: pathlib.Path, sbom_sha256: str, reason: str
 ) -> None:
+    #R120: Write deterministic scaffold signature fallback metadata.
     signature_path.write_text(
         "\n".join(
             [
@@ -303,6 +318,7 @@ def write_scaffold_signature(
 
 
 def main(argv: Iterable[str]) -> int:
+    #R120: Orchestrate signing policy routing across cosign, required, and scaffold modes.
     parser = argparse.ArgumentParser()
     parser.add_argument("--runtime-lock", required=True)
     parser.add_argument("--security-lock", required=True)

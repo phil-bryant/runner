@@ -19,6 +19,7 @@ TEXT_FIELDS = [
 
 
 def parse_seed_row_count(sql_text: str) -> int:
+    #R001: Parse canonical seed SQL VALUES block into expected row bounds.
     match = re.search(
         r"SELECT\s+\*\s+FROM\s+\(VALUES(?P<rows>.*?)\)\s+AS\s+seed_rows\s*\(",
         sql_text,
@@ -33,21 +34,25 @@ def parse_seed_row_count(sql_text: str) -> int:
 
 
 def serialize_row(row, columns):
+    #R010: Serialize invariant sample rows for deterministic reporting output.
     return {col: row[idx] for idx, col in enumerate(columns)}
 
 
 def write_report(report_path: pathlib.Path, report: dict):
+    #R005: Persist category integrity report artifact payload to disk.
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 
 def append_invariant(report: dict, name: str, description: str, count: int, examples):
+    #R010: Append invariant verdict rows and strict-gate metadata.
     report["invariants"].append(
         {"name": name, "description": description, "count": int(count), "ok": int(count) == 0, "examples": examples}
     )
 
 
 def build_base(strict_mode: bool, seed_row_count: int) -> dict:
+    #R005: Build deterministic category integrity base report payload.
     return {
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "status": "passed",
@@ -61,6 +66,8 @@ def build_base(strict_mode: bool, seed_row_count: int) -> dict:
 
 
 def main() -> int:
+    #R005: Emit category integrity report artifact and baseline diagnostics.
+    #R010: Enforce invariant evaluation with strict/non-strict gate exit behavior.
     if len(sys.argv) != 4:
         raise SystemExit("usage: category_integrity_check.py <report_path> <seed_sql_path> <strict_bool>")
     report_path = pathlib.Path(sys.argv[1])

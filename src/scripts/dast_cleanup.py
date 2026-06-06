@@ -41,11 +41,13 @@ from sqlalchemy import text
 
 
 def _load_baseline(path: pathlib.Path) -> dict[str, Any]:
+    #R040: Load captured baseline payload for cleanup/skip decisioning.
     with path.open("r", encoding="utf-8") as fh:
         return json.load(fh)
 
 
 def _write_summary(path: pathlib.Path, summary: dict[str, Any]) -> None:
+    #R045: Persist cleanup summary artifact to the configured output path.
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         json.dump(summary, fh, indent=2, default=str)
@@ -53,12 +55,14 @@ def _write_summary(path: pathlib.Path, summary: dict[str, Any]) -> None:
 
 
 def _emit_summary(summary_path: pathlib.Path, summary: dict[str, Any], payload: dict[str, Any], exit_code: int) -> int:
+    #R045: Emit cleanup summary payload and return final process exit code.
     _write_summary(summary_path, summary)
     print(json.dumps(payload))
     return exit_code
 
 
 def _skip_with_error(summary: dict[str, Any], summary_path: pathlib.Path, error: str) -> int:
+    #R040: Emit non-fatal skipped cleanup summary for baseline/import errors.
     summary["status"] = "skipped"
     summary["errors"].append(error)
     return _emit_summary(
@@ -70,6 +74,7 @@ def _skip_with_error(summary: dict[str, Any], summary_path: pathlib.Path, error:
 
 
 def _refuse_with_error(summary: dict[str, Any], summary_path: pathlib.Path, error: str) -> int:
+    #R035: Emit refusal summary and non-zero exit on profile mismatch.
     summary["status"] = "refused"
     summary["errors"].append(error)
     return _emit_summary(
@@ -81,6 +86,7 @@ def _refuse_with_error(summary: dict[str, Any], summary_path: pathlib.Path, erro
 
 
 def _restore_matches(conn, matches_baseline: list[dict[str, Any]], baseline_max_match_id: int) -> int:
+    #R030: Restore baseline transaction_email_match rows inside cleanup transaction.
     restored_matches = 0
     for match in matches_baseline:
         match_id = int(match["match_id"])
@@ -118,6 +124,7 @@ def _restore_matches(conn, matches_baseline: list[dict[str, Any]], baseline_max_
 
 
 def _delete_post_baseline_audits(conn, baseline_max_match_audit_id: int) -> int:
+    #R030: Delete transaction_email_match_audit rows created after baseline.
     return conn.execute(
         text(
             """
@@ -130,6 +137,7 @@ def _delete_post_baseline_audits(conn, baseline_max_match_audit_id: int) -> int:
 
 
 def _delete_post_baseline_matches(conn, baseline_max_match_id: int) -> int:
+    #R030: Delete transaction_email_match rows created after baseline.
     return conn.execute(
         text(
             """
@@ -142,6 +150,7 @@ def _delete_post_baseline_matches(conn, baseline_max_match_id: int) -> int:
 
 
 def _reconcile_classifications(conn, classifications_baseline: list[dict[str, Any]]) -> tuple[int, int]:
+    #R030: Reconcile transaction classifications to captured baseline state.
     baseline_classification_tx = {row["transaction_id"] for row in classifications_baseline}
     if baseline_classification_tx:
         deleted_classifications = conn.execute(
@@ -187,6 +196,7 @@ def _reconcile_classifications(conn, classifications_baseline: list[dict[str, An
 
 
 def _delete_post_baseline_categories(conn, baseline_max_category_id: int, run_id: str) -> int:
+    #R030: Delete non-seed categories created after baseline capture.
     return conn.execute(
         text(
             """
@@ -206,6 +216,7 @@ def _delete_post_baseline_categories(conn, baseline_max_category_id: int, run_id
 
 
 def _restore_categories(conn, categories_baseline: list[dict[str, Any]], baseline_max_category_id: int) -> int:
+    #R030: Restore baseline category field values after DAST mutations.
     restored_categories = 0
     for row in categories_baseline:
         if bool(row.get("is_seed")):
@@ -247,6 +258,7 @@ def _restore_categories(conn, categories_baseline: list[dict[str, Any]], baselin
 
 
 def _profile_refusal_message(baseline_profile: str | None, current_profile_name: str) -> str | None:
+    #R035: Build refusal diagnostics for profile-mismatch safety guard.
     if not baseline_profile:
         return None
     force_cleanup = os.environ.get("DAST_CLEANUP_FORCE", "false").lower() == "true"
@@ -270,6 +282,7 @@ def _run_cleanup_transaction(
     baseline_max_category_id: int,
     run_id: str,
 ) -> dict[str, int]:
+    #R030: Execute restore/delete cleanup sequence in one transaction.
     counts: dict[str, int] = {}
     with engine.begin() as conn:
         counts["matches_restored"] = _restore_matches(conn, matches_baseline, baseline_max_match_id)
@@ -284,6 +297,10 @@ def _run_cleanup_transaction(
 
 
 def main() -> int:
+    #R030: Orchestrate transactional restore/delete cleanup flow from baseline artifacts.
+    #R035: Enforce profile mismatch refusal policy before mutating data.
+    #R040: Degrade to skipped status on missing/non-captured baseline conditions.
+    #R045: Write cleanup summary artifact and emit operator-facing status payload.
     # New files/dirs from this process: no group/other access (aligns with umask 007 policy).
     os.umask(0o007)
     if len(sys.argv) != 4:

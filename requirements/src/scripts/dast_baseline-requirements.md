@@ -18,3 +18,13 @@ R010  Statement: Emit operator-readable baseline summary output.
 Design: Print concise JSON summary with captured counts and output path after successful snapshot write.
 Tests:
 - R010-T01: Verify successful run emits summary JSON including status, profile, and table count fields.
+
+R030  Statement: Serialize baseline rows and datetimes into JSON-safe payload values.
+Design: Convert DB row values through stable serialization helpers (`_iso`, `_serialize_row`) before writing artifacts.
+Tests:
+- R030-T01: Verify datetime/row serialization helpers produce stable JSON-safe baseline row payloads.
+
+R035  Statement: Capture baseline artifacts with skip degradation and summary emission.
+Design: Orchestrate baseline capture end-to-end, degrading to skipped on unavailable dependencies and emitting status summary output.
+Tests:
+- R035-T01: Verify `main` writes captured/skip artifacts and emits expected summary status fields.

@@ -19,6 +19,26 @@ Design: When baseline is missing or not `captured`, write `status=skipped` summa
 Tests:
 - R010-T01: Verify missing and skipped-status baselines produce non-fatal summaries with actionable error messages.
 
+R030  Statement: Execute restore/delete reconciliation in one cleanup transaction.
+Design: Run `_run_cleanup_transaction` to restore baseline rows and delete post-baseline inserts for matches, audits, categories, and classifications atomically.
+Tests:
+- R030-T01: Verify a single transaction executes restore/delete sequence and records expected count fields.
+
+R035  Statement: Enforce profile-mismatch refusal safety.
+Design: Build mismatch refusal diagnostics and terminate with refused status when baseline profile does not match active profile without override.
+Tests:
+- R035-T01: Verify profile mismatch path returns refused status with non-zero exit and no cleanup mutation.
+
+R040  Statement: Apply baseline load/skip semantics for unavailable restore input.
+Design: Load baseline artifacts and downgrade to skipped status on absent baseline or import/setup errors.
+Tests:
+- R040-T01: Verify missing/non-captured baseline paths emit skipped status and zero exit.
+
+R045  Statement: Emit and persist cleanup summary artifacts.
+Design: Write JSON cleanup summary and stdout status payload with consistent status/count/error fields.
+Tests:
+- R045-T01: Verify summary artifact and emitted payload are written for applied and failure flows.
+
 ## Changelog
 
 - 2026-05-25: Clarified R001 to require bound-parameter SQL for classification reconciliation deletes.

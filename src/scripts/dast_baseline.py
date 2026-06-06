@@ -32,6 +32,7 @@ from typing import Any
 
 
 def _iso(value: Any) -> Any:
+    #R030: Serialize datetime values to ISO-8601 for baseline artifacts.
     if isinstance(value, datetime):
         if value.tzinfo is None:
             value = value.replace(tzinfo=timezone.utc)
@@ -40,10 +41,12 @@ def _iso(value: Any) -> Any:
 
 
 def _serialize_row(row, columns: list[str]) -> dict[str, Any]:
+    #R030: Serialize database rows to JSON-safe baseline dictionaries.
     return {col: _iso(row[idx]) for idx, col in enumerate(columns)}
 
 
 def main() -> int:
+    #R035: Capture baseline snapshot, degrade to skipped when unavailable, and emit summary.
     # New files/dirs from this process: no group/other access (aligns with umask 007 policy).
     os.umask(0o007)
     if len(sys.argv) != 2:

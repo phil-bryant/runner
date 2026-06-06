@@ -5,11 +5,13 @@ from pathlib import Path
 
 
 def load_json(path: Path):
+    #R001: Load scanner report JSON artifacts from the configured report directory.
     with path.open("r", encoding="utf-8") as fh:
         return json.load(fh)
 
 
 def count_pip_audit(payload) -> int:
+    #R005: Normalize pip-audit payload variants into vulnerability counts.
     if isinstance(payload, list):
         return sum(len(item.get("vulns", [])) for item in payload if isinstance(item, dict))
     if isinstance(payload, dict) and isinstance(payload.get("dependencies"), list):
@@ -21,6 +23,7 @@ def count_pip_audit(payload) -> int:
 
 
 def main() -> int:
+    #R010: Aggregate severities, write summary JSON, and enforce policy-mode gate.
     if len(sys.argv) != 4:
         raise SystemExit(
             "usage: sast_summary_gate.py <report_dir> <fail_gate_bool> <policy_mode: medium|high>"

@@ -37,6 +37,7 @@ DEFAULT_VERSION_URLS = (
 
 
 def parse_semver(value: str | None) -> tuple[int, int, int] | None:
+    #R010: Normalize semantic-like version strings for drift comparison.
     if not value:
         return None
     parts = re.findall(r"\d+", value)
@@ -48,6 +49,7 @@ def parse_semver(value: str | None) -> tuple[int, int, int] | None:
 
 
 def compare_versions(left: str | None, right: str | None) -> int | None:
+    #R010: Compare normalized version triplets for gate decisions.
     left_triplet = parse_semver(left)
     right_triplet = parse_semver(right)
     if left_triplet is None or right_triplet is None:
@@ -60,6 +62,7 @@ def compare_versions(left: str | None, right: str | None) -> int | None:
 
 
 def fetch_json(url: str, timeout_seconds: int) -> tuple[dict[str, Any] | None, str]:
+    #R030: Retrieve HTTPS JSON metadata with strict object validation.
     if requests is None:
         return None, "requests is required for Teller API version checks."
     parsed = urlsplit(url)
@@ -81,6 +84,7 @@ def fetch_json(url: str, timeout_seconds: int) -> tuple[dict[str, Any] | None, s
 
 
 def fetch_text(url: str, timeout_seconds: int) -> tuple[str | None, str]:
+    #R030: Retrieve HTTPS text metadata from configured version sources.
     if requests is None:
         return None, "requests is required for Teller API version checks."
     parsed = urlsplit(url)
@@ -96,6 +100,7 @@ def fetch_text(url: str, timeout_seconds: int) -> tuple[str | None, str]:
 
 
 def fetch_text_with_opener(url: str, timeout_seconds: int, opener: Any) -> tuple[str | None, str]:
+    #R030: Retrieve HTTPS text with cookie-aware opener for authenticated flows.
     request = Request(url, headers={"User-Agent": "teller-api-version-freshness/1.0"})
     try:
         with opener.open(request, timeout=timeout_seconds) as response:
@@ -106,6 +111,7 @@ def fetch_text_with_opener(url: str, timeout_seconds: int, opener: Any) -> tuple
 
 
 def extract_version_from_docs(text: str) -> str | None:
+    #R001: Extract latest Teller dated version from docs text.
     # Teller docs currently phrase this as:
     # "Teller uses dated versions with the latest one being 2020-10-12."
     match = re.search(r"latest one being\s+(\d{4}-\d{2}-\d{2})", text, flags=re.I)
@@ -115,6 +121,7 @@ def extract_version_from_docs(text: str) -> str | None:
 
 
 def extract_hidden_input(text: str, name: str) -> str | None:
+    #R005: Extract dashboard hidden form inputs used in login/MFA flows.
     pattern = rf'name="{re.escape(name)}"[^>]*value="([^"]+)"'
     match = re.search(pattern, text, flags=re.I)
     if match:
@@ -123,6 +130,7 @@ def extract_hidden_input(text: str, name: str) -> str | None:
 
 
 def _otp_from_digits(text: str) -> str:
+    #R005: Normalize OTP digit inputs before dashboard MFA submission.
     digits_only = "".join(ch for ch in text if ch.isdigit())
     if len(digits_only) >= 6:
         return digits_only[:6]
@@ -130,6 +138,7 @@ def _otp_from_digits(text: str) -> str:
 
 
 def _totp_from_otpauth(text: str) -> str:
+    #R005: Derive TOTP code from otpauth secret payloads.
     if not text.startswith("otpauth://"):
         return ""
     parsed = urlsplit(text)
@@ -158,6 +167,7 @@ def _totp_from_otpauth(text: str) -> str:
 
 
 def resolve_otp_code(raw_value: str) -> str:
+    #R005: Resolve dashboard OTP from raw digits or otpauth URI.
     text = (raw_value or "").strip()
     if not text:
         return ""
@@ -168,6 +178,7 @@ def resolve_otp_code(raw_value: str) -> str:
 
 
 def read_1psa_field(item: str, field: str) -> str:
+    #R005: Read dashboard credentials and OTP material from 1psa fields.
     if field == "password":
         password_cmd = subprocess.run(["1psa", "-p", item], capture_output=True, text=True, check=False)
         if password_cmd.returncode == 0 and password_cmd.stdout.strip():
@@ -179,16 +190,19 @@ def read_1psa_field(item: str, field: str) -> str:
 
 
 def _extract_latest_version(page_text: str) -> str | None:
+    #R001: Extract latest version value from dashboard/source page content.
     latest_match = re.search(r"latest API version\s*\((\d{4}-\d{2}-\d{2})\)", page_text, flags=re.I)
     return latest_match.group(1) if latest_match else None
 
 
 def _extract_current_version(page_text: str) -> str | None:
+    #R005: Extract current dashboard API version text from authenticated page content.
     current_match = re.search(r"currently using(?: the latest)? API version\s*\((\d{4}-\d{2}-\d{2})\)", page_text, flags=re.I)
     return current_match.group(1) if current_match else None
 
 
 def _is_dashboard_on_latest(page_text: str, current_version: str | None, latest_version: str | None) -> bool:
+    #R005: Determine dashboard latest-version status from parsed/version text signals.
     on_latest = bool(re.search(r"currently using the latest API version", page_text, flags=re.I))
     if on_latest and current_version and not latest_version:
         return True
@@ -203,6 +217,7 @@ def _is_dashboard_on_latest(page_text: str, current_version: str | None, latest_
 
 
 def _dashboard_error_result(result: dict[str, Any], warnings: list[str], message: str) -> tuple[dict[str, Any], list[str]]:
+    #R005: Emit standardized dashboard error status and warning payload fields.
     result["checked"] = True
     result["status"] = "error"
     warnings.append(message)
@@ -215,6 +230,7 @@ def _load_dashboard_credentials(
     password_field: str,
     otp_field: str,
 ) -> tuple[str, str, str]:
+    #R005: Load username/password/OTP credentials for dashboard authentication flow.
     username = read_1psa_field(psa_item, username_field)
     password = read_1psa_field(psa_item, password_field)
     otp_raw = read_1psa_field(psa_item, otp_field) if otp_field else ""
@@ -231,6 +247,7 @@ def _submit_dashboard_login(
     csrf_token: str,
     timeout_seconds: int,
 ) -> tuple[str | None, str]:
+    #R005: Submit authenticated dashboard login form and capture response payload.
     login_url = urljoin(f"{parsed_url.scheme}://{parsed_url.netloc}", "/session")
     form_payload = {
         "_csrf_token": csrf_token,
@@ -264,6 +281,7 @@ def _submit_dashboard_mfa(
     mfa_csrf: str,
     timeout_seconds: int,
 ) -> str:
+    #R005: Submit dashboard MFA confirmation form when challenged.
     mfa_payload = urlencode({"_csrf_token": mfa_csrf, "mfa[code]": otp}).encode("utf-8")
     mfa_request = Request(
         urljoin(f"{parsed_url.scheme}://{parsed_url.netloc}", "/session/mfa"),
@@ -288,6 +306,7 @@ def _maybe_complete_dashboard_mfa(
     parsed_url,
     timeout_seconds: int,
 ) -> str:
+    #R005: Complete optional dashboard MFA challenge when presented post-login.
     requires_mfa = "/session/mfa" in login_response or 'action="/session/mfa"' in login_response
     if not requires_mfa:
         return ""
@@ -307,6 +326,7 @@ def _apply_parsed_dashboard_versions(
     warnings: list[str],
     parsed_versions: dict[str, Any],
 ) -> tuple[dict[str, Any], list[str]]:
+    #R005: Apply parsed dashboard version values into reportable dashboard status.
     result["checked"] = True
     if parsed_versions["latest_version"] or parsed_versions["current_version"]:
         result["status"] = "ok"
@@ -329,6 +349,7 @@ def _discover_dashboard_version_authenticated(
     result: dict[str, Any],
     warnings: list[str],
 ) -> tuple[dict[str, Any], list[str]]:
+    #R005: Execute authenticated dashboard version discovery with login/MFA sequence.
     cookies = CookieJar()
     opener = build_opener(HTTPCookieProcessor(cookies))
     login_page, login_error = fetch_text_with_opener(dashboard_url, timeout_seconds, opener)
@@ -372,6 +393,7 @@ def _discover_dashboard_version_authenticated(
 
 
 def parse_dashboard_versions(page_text: str) -> dict[str, Any]:
+    #R005: Parse dashboard current/latest version indicators after authentication.
     latest_version = _extract_latest_version(page_text)
     current_version = _extract_current_version(page_text)
     on_latest = _is_dashboard_on_latest(page_text, current_version, latest_version)
@@ -392,6 +414,7 @@ def discover_dashboard_version(
     otp_field: str,
     timeout_seconds: int,
 ) -> tuple[dict[str, Any], list[str]]:
+    #R005: Execute dashboard credentialed discovery flow with status diagnostics.
     warnings: list[str] = []
     result = {
         "checked": False,
@@ -424,6 +447,7 @@ def discover_dashboard_version(
 
 
 def discover_version(urls: list[str], timeout_seconds: int) -> tuple[str | None, str | None, list[str]]:
+    #R001: Discover latest version from configured docs/OpenAPI metadata endpoints.
     warnings: list[str] = []
     for url in urls:
         if url.endswith("/docs/api"):
@@ -451,6 +475,7 @@ def discover_version(urls: list[str], timeout_seconds: int) -> tuple[str | None,
 
 
 def _resolve_version_sources(raw_sources: str) -> list[str]:
+    #R001: Resolve configured version source list with defaults fallback.
     sources = [item.strip() for item in raw_sources.split(",") if item.strip()]
     if sources:
         return sources
@@ -462,6 +487,7 @@ def _compute_newer_available(
     baseline: str | None,
     dashboard: dict[str, Any],
 ) -> tuple[str, bool | None]:
+    #R010: Compute newer-available drift state from baseline/latest/dashboard signals.
     if not latest_version:
         return "unknown", None
     if dashboard.get("checked") and dashboard.get("on_latest") is True:
@@ -477,6 +503,7 @@ def _compute_newer_available(
 
 
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
+    #R035: Assemble freshness status, warnings, and drift-gate report payload.
     sources = _resolve_version_sources(args.version_sources)
     dashboard, dashboard_warnings = discover_dashboard_version(
         dashboard_url=args.dashboard_url,
@@ -516,6 +543,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def format_report(report: dict[str, Any]) -> str:
+    #R035: Render human-readable drift report text from report payload.
     lines = [
         "Teller API version freshness report",
         f"- Status: {report['status']}",
@@ -535,6 +563,7 @@ def format_report(report: dict[str, Any]) -> str:
 
 
 def parse_args() -> argparse.Namespace:
+    #R040: Parse CLI artifact paths, source overrides, and gate options.
     parser = argparse.ArgumentParser(description="Check Teller API version freshness.")
     parser.add_argument("--output-json", default="artifacts/security/teller-api-version-freshness.json")
     parser.add_argument("--output-text", default="artifacts/security/teller-api-version-freshness.txt")
@@ -555,6 +584,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    #R040: Persist JSON/text artifacts and enforce fail-on-new gate exit status.
     # New files/dirs from this process: no group/other access (aligns with umask 007 policy).
     os.umask(0o007)
     args = parse_args()
