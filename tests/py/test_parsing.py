@@ -102,6 +102,16 @@ def test_extract_numbered_test_ids_python_syntax_error_fallback(tmp_path):
     assert "R904-T01" in ids or any("R904-T01" in m for m in misplaced)
 
 
+def test_extract_numbered_test_ids_requires_treesitter_for_bats(tmp_path, monkeypatch):
+    #R045-T01: parser-backed bats extraction hard-fails when tree-sitter is unavailable.
+    fixture = tmp_path / "x.bats"
+    fixture.write_text('@test "x" {\n  ' + HASH + "R904-T01: inside test block\n}\n")
+    monkeypatch.setattr(parsing, "_TS_GET_PARSER", False)
+    monkeypatch.setattr(parsing, "_TS_PARSER_CACHE", {})
+    with pytest.raises(RuntimeError, match="tree_sitter_language_pack"):
+        parsing.extract_numbered_test_ids(fixture)
+
+
 def test_extract_numbered_test_ids_bats_brace_in_string(tmp_path):
     #R025-T05: a stray brace inside a bats string does not close the block early.
     pytest.importorskip("tree_sitter_language_pack")
@@ -188,6 +198,47 @@ def test_find_untagged_functions_treesitter_languages(tmp_path):
     sw_names = [n for n, _ in parsing.find_untagged_functions(sw)]
     assert "foo" in sh_names and "bar" not in sh_names
     assert "a" in sw_names
+
+
+def test_find_unanchored_numbered_test_tags_python(tmp_path):
+    #R050-T01: a tag inside a real def test_* block is anchored; a module-level tag is reported.
+    fixture = tmp_path / "x.py"
+    body = (
+        "def test_a():\n"
+        "    x = 1  " + HASH + "R901-T01: inside a real test block\n"
+        "GLOBAL = 1  " + HASH + "R902-T01: outside any test function\n"
+    )
+    fixture.write_text(body)
+    reported = [tag for _line, tag, _reason in parsing.find_unanchored_numbered_test_tags(fixture)]
+    assert "R902-T01" in reported
+    assert "R901-T01" not in reported
+
+
+def test_find_unanchored_numbered_test_tags_bats(tmp_path):
+    #R050-T02: a tag inside a bats @test block is anchored; one outside is reported.
+    pytest.importorskip("tree_sitter_language_pack")
+    fixture = tmp_path / "x.bats"
+    body = (
+        HASH + "R901-T01: outside any block\n"
+        '@test "t" {\n'
+        "  " + HASH + "R902-T01: inside the block\n"
+        "}\n"
+    )
+    fixture.write_text(body)
+    reported = [tag for _line, tag, _reason in parsing.find_unanchored_numbered_test_tags(fixture)]
+    assert "R901-T01" in reported
+    assert "R902-T01" not in reported
+
+
+def test_find_unanchored_numbered_test_tags_unparseable_fails_closed(tmp_path):
+    #R050-T03: an unparseable test-language file with a tag fails closed; no tags yields no findings.
+    tagged = tmp_path / "s.sql"
+    tagged.write_text("select 1;  " + HASH + "R901-T01: tag in an unparseable sql test file\n")
+    reported = [tag for _line, tag, _reason in parsing.find_unanchored_numbered_test_tags(tagged)]
+    assert "R901-T01" in reported
+    empty = tmp_path / "e.sql"
+    empty.write_text("select 1;\n")
+    assert parsing.find_unanchored_numbered_test_tags(empty) == []
 
 
 def test_find_unscoped_source_tags():

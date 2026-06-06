@@ -19,6 +19,7 @@ from .parsing import (
     extract_scoped_source_ids,
     extract_source_ids,
     extract_ui_required_ids,
+    find_unanchored_numbered_test_tags,
     find_untagged_functions,
     find_unscoped_numbered_test_tags,
     find_unscoped_source_tags,
@@ -108,18 +109,15 @@ class TraceabilityVerifier:
             status = False
         if not self.verify_numbered_test_tag_text(requirements_file, source_list):
             status = False
-        if self._env_flag_false("STRICT_TRACEABILITY_NUMBERED_BULLETS"):
-            print(
-                f"ℹ️  Numbered requirements bullet enforcement skipped for {self._rel(requirements_file)} (set STRICT_TRACEABILITY_NUMBERED_BULLETS=true to re-enable)."
-            )
-        else:
-            req_text = requirements_file.read_text(encoding="utf-8")
-            issues = verify_requirements_numbered_test_bullets(req_text, self._rel(requirements_file))
-            if issues:
-                print("\n".join(issues))
-                print(f"❌ FAIL (requirements-numbered-tests): {self._rel(requirements_file)} contains malformed test bullets.")
-                status = False
+        req_text = requirements_file.read_text(encoding="utf-8")
+        issues = verify_requirements_numbered_test_bullets(req_text, self._rel(requirements_file))
+        if issues:
+            print("\n".join(issues))
+            print(f"❌ FAIL (requirements-numbered-tests): {self._rel(requirements_file)} contains malformed test bullets.")
+            status = False
         if not self.verify_numbered_test_traceability(requirements_file, source_list):
+            status = False
+        if not self.verify_numbered_test_tag_anchoring(requirements_file, source_list):
             status = False
         return status
 
@@ -169,18 +167,15 @@ class TraceabilityVerifier:
                 file_fail = True
             if not self.verify_numbered_test_tag_text(requirements_file, enforceable_source_list):
                 file_fail = True
-            if self._env_flag_false("STRICT_TRACEABILITY_NUMBERED_BULLETS"):
-                print(
-                    f"ℹ️  Numbered requirements bullet enforcement skipped for {self._rel(requirements_file)} (set STRICT_TRACEABILITY_NUMBERED_BULLETS=true to re-enable)."
-                )
-            else:
-                req_text = requirements_file.read_text(encoding="utf-8")
-                issues = verify_requirements_numbered_test_bullets(req_text, self._rel(requirements_file))
-                if issues:
-                    print("\n".join(issues))
-                    print(f"❌ FAIL (requirements-numbered-tests): {self._rel(requirements_file)} contains malformed test bullets.")
-                    file_fail = True
+            req_text = requirements_file.read_text(encoding="utf-8")
+            issues = verify_requirements_numbered_test_bullets(req_text, self._rel(requirements_file))
+            if issues:
+                print("\n".join(issues))
+                print(f"❌ FAIL (requirements-numbered-tests): {self._rel(requirements_file)} contains malformed test bullets.")
+                file_fail = True
             if not self.verify_numbered_test_traceability(requirements_file, enforceable_source_list):
+                file_fail = True
+            if not self.verify_numbered_test_tag_anchoring(requirements_file, enforceable_source_list):
                 file_fail = True
         else:
             print(f"✅ PASS (locked-source-test-skip): {self._rel(requirements_file)} (all mapped sources are policy-locked)")
@@ -306,12 +301,7 @@ class TraceabilityVerifier:
         return False
 
     def verify_numbered_test_traceability(self, requirements_file: Path, source_list: list[str]) -> bool:
-        #R020: Enforce numbered #Rxxx-Tnn 1:1 mapping + in-test-block placement.
-        if self._env_flag_false("STRICT_TRACEABILITY_NUMBERED_TAGS"):
-            print(
-                f"ℹ️  Numbered test-tag enforcement skipped for {self._rel(requirements_file)} (set STRICT_TRACEABILITY_NUMBERED_TAGS=true to re-enable)."
-            )
-            return True
+        #R020: Enforce numbered #Rxxx-Tnn 1:1 mapping + in-test-block placement (unconditional).
 
         req_text = requirements_file.read_text(encoding="utf-8")
         req_ids = set(extract_requirement_ids(req_text))
@@ -351,6 +341,28 @@ class TraceabilityVerifier:
         if extra:
             print("  Missing in requirements (present in tests):")
             print(format_bulleted(extra, prefix="    - "))
+        return False
+
+    def verify_numbered_test_tag_anchoring(self, requirements_file: Path, source_list: list[str]) -> bool:
+        #R070: Every #Rxxx-Tnn tag must be anchored inside a parser-recognized
+        # executable test definition, using the same ast/tree-sitter methodology
+        # as the per-function tag-coverage gate. Test files whose language has no
+        # parseable test-block convention fail closed when they carry numbered
+        # tags (no silent acceptance from anywhere); unconditional, no env opt-out.
+        default_tests, ui_tests = discover_test_files_for_requirements(requirements_file, source_list, self.repo_root)
+        combined_tests = sorted(set(default_tests + ui_tests))
+        issues: list[str] = []
+        for test_file in combined_tests:
+            path = self._to_repo_path(test_file)
+            if not path.is_file():
+                continue
+            for line_number, tag, reason in find_unanchored_numbered_test_tags(path):
+                issues.append(f"{self._rel(path)}:{line_number}: #{tag} ({reason})")
+        if not issues:
+            return True
+        print("❌ FAIL (numbered-test-tag-anchoring): #Rxxx-Tnn tags must sit inside a parser-recognized executable test definition:")
+        print(format_bulleted(sorted(set(issues))))
+        print("  - Anchor each numbered tag in a real test body (def test_*/@test/func test*); unparseable test files are not silently accepted.")
         return False
 
     def verify_numbered_script_requirements_coverage(self) -> bool:
@@ -408,11 +420,6 @@ class TraceabilityVerifier:
         return False
 
     def verify_numbered_script_test_coverage(self) -> bool:
-        if self._env_flag_false("STRICT_TRACEABILITY_FULL_COVERAGE"):
-            print(
-                "ℹ️  Numbered script test-coverage check skipped (set STRICT_TRACEABILITY_FULL_COVERAGE=true to re-enable)."
-            )
-            return True
         missing = []
         shell_test_roots = list_shell_test_roots(self.repo_root)
         for pattern in ("tests/[0-9][0-9]_*.sh", "tests/[0-9][0-9]_*.py", "[0-9][0-9]_*.sh", "[0-9][0-9]_*.py"):
@@ -438,12 +445,6 @@ class TraceabilityVerifier:
     def verify_repository_source_requirements_coverage(self) -> bool:
         #R030: Every repository software file must be covered by a requirements doc.
         #R055: The engine grants itself no coverage exemption (no exclude-source escape hatch).
-        if self._env_flag_false("STRICT_TRACEABILITY_FULL_COVERAGE"):
-            print(
-                "ℹ️  Repository software coverage check skipped (set STRICT_TRACEABILITY_FULL_COVERAGE=true to re-enable)."
-            )
-            return True
-
         all_sources = set(list_repository_software_files(self.repo_root))
         covered_sources: set[str] = set()
         for req_file in list_requirements_files(self.repo_root):
@@ -485,19 +486,8 @@ class TraceabilityVerifier:
 
     def verify_function_tag_coverage(self) -> bool:
         #R060: Every parser-identifiable function must carry a scoped requirement
-        # tag (enforced by default). Reports each untagged function as
-        # `file:line: name`, honoring an optional baseline allowlist so a repo can
-        # fail only on newly-introduced untagged functions; set
-        # STRICT_TRACEABILITY_FUNCTION_TAGS=false to opt out.
-        import os
-
-        if os.environ.get("STRICT_TRACEABILITY_FUNCTION_TAGS", "true").lower() == "false":
-            print(
-                "ℹ️  Per-function tag coverage check disabled (STRICT_TRACEABILITY_FUNCTION_TAGS=false)."
-            )
-            return True
-
-        baseline = self._load_function_tag_baseline()
+        # tag (unconditional). Reports each untagged function as `file:line: name`
+        # with no baseline suppression or runtime opt-out.
         failures: list[str] = []
         skipped_oversize = 0
         for rel in list_function_tag_candidate_files(self.repo_root):
@@ -511,8 +501,7 @@ class TraceabilityVerifier:
                 continue
             for name, line in untagged:
                 entry = f"{rel}:{line}: {name}"
-                if entry not in baseline:
-                    failures.append(entry)
+                failures.append(entry)
         if skipped_oversize:
             print(f"ℹ️  Per-function tag coverage skipped {skipped_oversize} oversize file(s) (>512KB).")
         if not failures:
@@ -521,24 +510,6 @@ class TraceabilityVerifier:
         print(f"❌ FAIL (function-tag-coverage): {len(failures)} function(s) missing a requirement tag:")
         print(format_bulleted(sorted(failures)))
         return False
-
-    def _load_function_tag_baseline(self) -> set[str]:
-        import os
-
-        configured = os.environ.get(
-            "TRACEABILITY_FUNCTION_TAG_BASELINE", "config/traceability/function-tag-baseline.txt"
-        )
-        candidate = Path(configured)
-        if not candidate.is_absolute():
-            candidate = self.repo_root / candidate
-        if not candidate.is_file():
-            return set()
-        entries: set[str] = set()
-        for line in candidate.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped and not stripped.startswith("#"):
-                entries.add(stripped)
-        return entries
 
     def collect_ids_from_test_list(self, test_files: list[str]) -> set[str]:
         ids: set[str] = set()
@@ -654,12 +625,6 @@ class TraceabilityVerifier:
         if left.stat().st_size != right.stat().st_size:
             return False
         return left.read_bytes() == right.read_bytes()
-
-    @staticmethod
-    def _env_flag_false(name: str) -> bool:
-        import os
-
-        return os.environ.get(name, "true").lower() == "false"
 
     @staticmethod
     def _is_deprecated_path(path: str) -> bool:

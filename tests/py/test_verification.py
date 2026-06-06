@@ -3,6 +3,7 @@
 Bare-tag fixture content is assembled at runtime so the engine's own
 unconditional tag-text scan does not flag this test file.
 """
+import ast
 from pathlib import Path
 
 from traceability.verification import TraceabilityVerifier
@@ -17,6 +18,46 @@ def _clear_root_env(monkeypatch):
 
 def _verifier(tmp_path):
     return TraceabilityVerifier(repo_root=tmp_path)
+
+
+def _extract_traceability_env_knobs_from_source(source_text: str) -> set[str]:
+    knobs: set[str] = set()
+    tree = ast.parse(source_text)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "_env_flag_false"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            knobs.add(node.args[0].value)
+            continue
+        if not (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            continue
+        owner = node.func.value
+        if (
+            isinstance(owner, ast.Attribute)
+            and owner.attr == "environ"
+            and isinstance(owner.value, ast.Name)
+            and owner.value.id == "os"
+        ):
+            knobs.add(node.args[0].value)
+    return {
+        name
+        for name in knobs
+        if name.startswith("STRICT_TRACEABILITY_")
+        or name.startswith("TRACEABILITY_")
+        or name == "SHELL_BATS_ROOTS"
+    }
 
 
 def test_strict_pair_matches_ids(tmp_path):
@@ -64,7 +105,6 @@ def test_test_traceability_missing(tmp_path, monkeypatch):
 def test_numbered_test_traceability_missing(tmp_path, monkeypatch):
     #R020-T01: a missing numbered test tag fails the 1:1 check.
     _clear_root_env(monkeypatch)
-    monkeypatch.delenv("STRICT_TRACEABILITY_NUMBERED_TAGS", raising=False)
     doc = tmp_path / "foo-requirements.md"
     doc.write_text("R001  Statement: a\nTests:\n- R001-T01: does a thing\n")
     (tmp_path / "tests" / "sh").mkdir(parents=True)
@@ -74,6 +114,45 @@ def test_numbered_test_traceability_missing(tmp_path, monkeypatch):
     assert _verifier(tmp_path).verify_numbered_test_traceability(doc, ["src/foo.sh"]) is False
 
 
+def test_numbered_tag_anchoring_passes_when_inside_block(tmp_path, monkeypatch):
+    #R070-T01: a numbered tag anchored inside a real test block passes the gate.
+    _clear_root_env(monkeypatch)
+    doc = tmp_path / "foo-requirements.md"
+    doc.write_text("R001  Statement: a\nTests:\n- R001-T01: does a thing\n")
+    (tmp_path / "tests" / "sh").mkdir(parents=True)
+    inside = HASH + "R001-T01: inside the test block\n"
+    (tmp_path / "tests" / "sh" / "foo.bats").write_text('@test "x" {\n  ' + inside + "}\n")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "foo.sh").write_text(HASH + "R001: a\n")
+    assert _verifier(tmp_path).verify_numbered_test_tag_anchoring(doc, ["src/foo.sh"]) is True
+
+
+def test_numbered_tag_anchoring_fails_outside_block(tmp_path, monkeypatch):
+    #R070-T02: a numbered tag placed outside any test block fails the gate.
+    _clear_root_env(monkeypatch)
+    doc = tmp_path / "foo-requirements.md"
+    doc.write_text("R001  Statement: a\nTests:\n- R001-T01: does a thing\n")
+    (tmp_path / "tests" / "sh").mkdir(parents=True)
+    outside = HASH + "R001-T01: outside any test block\n"
+    (tmp_path / "tests" / "sh" / "foo.bats").write_text(outside + '@test "x" {\n  :\n}\n')
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "foo.sh").write_text(HASH + "R001: a\n")
+    assert _verifier(tmp_path).verify_numbered_test_tag_anchoring(doc, ["src/foo.sh"]) is False
+
+
+def test_numbered_tag_anchoring_fails_closed_for_unparseable_language(tmp_path, monkeypatch):
+    #R070-T03: a test file whose language has no parseable test-block convention fails closed.
+    _clear_root_env(monkeypatch)
+    doc = tmp_path / "foo-requirements.md"
+    doc.write_text("R001  Statement: a\nTests:\n- R001-T01: does a thing\n")
+    (tmp_path / "tests" / "sql").mkdir(parents=True)
+    tag = HASH + "R001-T01: tag in an unparseable sql test file\n"
+    (tmp_path / "tests" / "sql" / "foo.sql").write_text("select 1;  " + tag)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "foo.sql").write_text(HASH + "R001: a\n")
+    assert _verifier(tmp_path).verify_numbered_test_tag_anchoring(doc, ["src/foo.sql"]) is False
+
+
 def test_requirements_only_mode_detected(tmp_path):
     #R025-T01: a requirements-only doc is detected.
     doc = tmp_path / "d-requirements.md"
@@ -81,9 +160,8 @@ def test_requirements_only_mode_detected(tmp_path):
     assert _verifier(tmp_path).is_requirements_only_mode(doc) is True
 
 
-def test_repository_coverage_flags_uncovered(tmp_path, monkeypatch):
+def test_repository_coverage_flags_uncovered(tmp_path):
     #R030-T01: an uncovered software file is reported when coverage is enabled.
-    monkeypatch.delenv("STRICT_TRACEABILITY_FULL_COVERAGE", raising=False)
     (tmp_path / "requirements").mkdir()
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "lonely.py").write_text("x = 1\n")
@@ -145,25 +223,58 @@ def test_engine_self_coverage_has_no_exemption():
     assert "tests/t04_run_requirements_traceability_tests.sh" in files
 
 
-def test_function_tag_gate_default_on_and_opt_out(tmp_path, monkeypatch):
-    #R060-T01: the gate is enforced by default and only disabled by an explicit false.
-    monkeypatch.delenv("STRICT_TRACEABILITY_FUNCTION_TAGS", raising=False)
-    monkeypatch.delenv("TRACEABILITY_FUNCTION_TAG_BASELINE", raising=False)
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "m.py").write_text("def untagged():\n    return 1\n")
-    assert _verifier(tmp_path).verify_function_tag_coverage() is False  # default-on enforces
-    monkeypatch.setenv("STRICT_TRACEABILITY_FUNCTION_TAGS", "false")
-    assert _verifier(tmp_path).verify_function_tag_coverage() is True  # explicit opt-out
-
-
-def test_function_tag_gate_baseline_suppresses(tmp_path, monkeypatch):
-    #R060-T02: an enabled gate fails on an untagged function; a baseline entry suppresses it.
-    monkeypatch.setenv("STRICT_TRACEABILITY_FUNCTION_TAGS", "true")
-    monkeypatch.delenv("TRACEABILITY_FUNCTION_TAG_BASELINE", raising=False)
+def test_function_tag_gate_enforced_unconditionally(tmp_path):
+    #R060-T01: the gate always enforces and fails on an untagged function.
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "m.py").write_text("def untagged():\n    return 1\n")
     assert _verifier(tmp_path).verify_function_tag_coverage() is False
+
+
+def test_function_tag_gate_ignores_legacy_weakening_knobs(tmp_path, monkeypatch):
+    #R060-T02: legacy opt-out and baseline env knobs no longer weaken enforcement.
+    monkeypatch.setenv("STRICT_TRACEABILITY_FUNCTION_TAGS", "false")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "m.py").write_text("def untagged():\n    return 1\n")
     baseline = tmp_path / "config" / "traceability" / "function-tag-baseline.txt"
     baseline.parent.mkdir(parents=True)
     baseline.write_text("src/m.py:1: untagged\n")
-    assert _verifier(tmp_path).verify_function_tag_coverage() is True
+    monkeypatch.setenv("TRACEABILITY_FUNCTION_TAG_BASELINE", baseline.as_posix())
+    assert _verifier(tmp_path).verify_function_tag_coverage() is False
+
+
+def test_traceability_weakening_knob_surface_locked():
+    #R065-T01: traceability env surface is locked to scope knobs only.
+    base = Path(__file__).resolve().parent / "traceability"
+    module_paths = [
+        base / "discovery.py",
+        base / "parsing.py",
+        base / "verification.py",
+    ]
+    observed: set[str] = set()
+    for module_path in module_paths:
+        observed.update(_extract_traceability_env_knobs_from_source(module_path.read_text(encoding="utf-8")))
+    expected = {
+        "TRACEABILITY_REQUIREMENTS_ROOTS",
+        "TRACEABILITY_TEST_ROOTS",
+        "SHELL_BATS_ROOTS",
+    }
+    if observed == expected:
+        return
+    added = sorted(observed - expected)
+    removed = sorted(expected - observed)
+    details: list[str] = []
+    if added:
+        details.append(f"Added knobs: {', '.join(added)}")
+    if removed:
+        details.append(f"Removed/renamed knobs: {', '.join(removed)}")
+    details_text = "\n".join(details) if details else "No diff details available."
+    raise AssertionError(
+        "Traceability env-knob surface changed.\n"
+        "Only scope knobs are allowed; strictness knobs are intentionally abolished.\n"
+        "If intentional, update both contract files deliberately:\n"
+        "- requirements/tests/py/traceability/verification-requirements.md (R065)\n"
+        "- tests/py/test_verification.py expected allowlist\n"
+        f"{details_text}\n"
+        f"Expected: {sorted(expected)}\n"
+        f"Observed: {sorted(observed)}"
+    )

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import os
 import re
 from pathlib import Path
 from typing import Iterable
@@ -183,16 +182,12 @@ _TS_GET_PARSER = None  # None = not yet attempted, False = unavailable, else cal
 _TS_PARSER_CACHE: dict[str, object] = {}
 
 
-def _treesitter_required() -> bool:
-    return os.environ.get("STRICT_TRACEABILITY_TREESITTER", "false").lower() == "true"
-
-
 def _treesitter_parser(language_name: str):
-    """Return a cached tree-sitter parser for ``language_name`` or ``None``.
+    """Return a cached tree-sitter parser for ``language_name``.
 
-    Imports are lazy and failures degrade gracefully to the brace-counting
-    fallbacks. When ``STRICT_TRACEABILITY_TREESITTER=true`` an unavailable
-    parser is a hard error so CI cannot silently ship the weaker detector.
+    Tree-sitter is mandatory for non-Python parser-backed checks. Missing or
+    unusable parsers are hard errors so CI cannot silently ship weaker
+    heuristics.
     """
     global _TS_GET_PARSER
     if _TS_GET_PARSER is None:
@@ -203,19 +198,16 @@ def _treesitter_parser(language_name: str):
         except Exception:
             _TS_GET_PARSER = False
     if _TS_GET_PARSER is False:
-        if _treesitter_required():
-            raise RuntimeError(
-                "STRICT_TRACEABILITY_TREESITTER=true but tree_sitter_language_pack "
-                "could not be imported; install tree-sitter-language-pack."
-            )
-        return None
+        raise RuntimeError(
+            "tree_sitter_language_pack could not be imported; strict traceability parsing requires it."
+        )
     if language_name not in _TS_PARSER_CACHE:
         try:
             _TS_PARSER_CACHE[language_name] = _TS_GET_PARSER(language_name)
-        except Exception:
-            if _treesitter_required():
-                raise
-            _TS_PARSER_CACHE[language_name] = None
+        except Exception as exc:
+            raise RuntimeError(
+                f"tree_sitter_language_pack could not provide parser for '{language_name}'."
+            ) from exc
     return _TS_PARSER_CACHE[language_name]
 
 
@@ -297,10 +289,10 @@ def _treesitter_block_ranges(
         return None
     try:
         tree = _ts_parse(parser, source_text)
-    except Exception:
-        if _treesitter_required():
-            raise
-        return None
+    except Exception as exc:
+        raise RuntimeError(
+            f"tree-sitter parse failed for language '{language_name}'."
+        ) from exc
     source_bytes = source_text.encode("utf-8")
     ranges: list[tuple[int, int]] = []
     stack = [_ts_attr(tree, "root_node")]
@@ -405,16 +397,16 @@ def _bats_to_bash(text: str) -> str:
 
 def _bats_test_block_ranges(text: str, lines: list[str]) -> list[tuple[int, int]]:
     ranges = _treesitter_block_ranges("bash", _bats_to_bash(text), {"function_definition"})
-    if ranges is not None:
-        return ranges
-    return _brace_ranges(lines, _BATS_START_RE)
+    if ranges is None:
+        raise RuntimeError("tree-sitter did not return bats test block ranges.")
+    return ranges
 
 
 def _swift_test_block_ranges(text: str, lines: list[str]) -> list[tuple[int, int]]:
     ranges = _treesitter_block_ranges("swift", text, {"function_declaration"}, name_prefix="test")
-    if ranges is not None:
-        return ranges
-    return _brace_ranges(lines, _SWIFT_START_RE)
+    if ranges is None:
+        raise RuntimeError("tree-sitter did not return swift test block ranges.")
+    return ranges
 
 
 def _test_block_line_ranges(suffix: str, text: str, lines: list[str]) -> list[tuple[int, int]] | None:
@@ -471,6 +463,35 @@ def extract_numbered_test_ids(test_file: Path) -> tuple[list[str], list[str]]:
         else:
             misplaced.append(f"{test_file}:{line_number}: #{tag}")
     return sorted(ids), misplaced
+
+
+#R050: Detect numbered #Rxxx-Tnn tags that are not anchored to a real,
+# parser-recognized executable test definition. Reuses the same test-block
+# enumeration as placement detection (`_test_block_line_ranges`: Python via the
+# stdlib `ast`; bats/swift via tree-sitter). Fails closed for test files whose
+# language has no parseable test-block convention: any numbered tag in such a
+# file is reported as unanchored rather than silently accepted from anywhere. A
+# file with no numbered tags yields no findings.
+def find_unanchored_numbered_test_tags(
+    test_file: Path, text: str | None = None
+) -> list[tuple[int, str, str]]:
+    if text is None:
+        if not test_file.is_file():
+            return []
+        text = test_file.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    tags = _numbered_tags_by_line(lines)
+    if not tags:
+        return []
+    ranges = _test_block_line_ranges(test_file.suffix.lower(), text, lines)
+    if ranges is None:
+        reason = f"no parseable test definitions in '{test_file.suffix}' test file"
+        return [(line_number, tag, reason) for line_number, tag in tags]
+    issues: list[tuple[int, str, str]] = []
+    for line_number, tag in tags:
+        if not _line_in_ranges(ranges, line_number):
+            issues.append((line_number, tag, "not inside a parser-recognized test definition"))
+    return issues
 
 
 _ANY_SOURCE_TAG_PATTERN = re.compile(r"#(R\d{3}(?:-\d{3})*)(-T\d{2})?")
@@ -563,7 +584,7 @@ def iter_function_spans(suffix: str, text: str) -> list[tuple[str, int, int]] | 
     parse_text = _bats_to_bash(text) if suffix == ".bats" else text
     ranges = _treesitter_block_ranges(language_name, parse_text, node_kinds)
     if ranges is None:
-        return None
+        raise RuntimeError(f"tree-sitter did not return function spans for '{suffix}'.")
     lines = text.splitlines()
     spans: list[tuple[str, int, int]] = []
     for start, end in ranges:

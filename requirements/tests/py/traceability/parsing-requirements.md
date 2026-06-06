@@ -32,7 +32,7 @@ Tests:
 - R020-T01: Verify an unnumbered bullet under `Tests:` is reported.
 
 R025  Statement: Numbered test tags must live inside executable test blocks.
-Design: `extract_numbered_test_ids` extracts `#Rxxx-Tnn` tags from a test file and reports any tag found outside a test body. Block boundaries come from a parser (Python via the stdlib `ast`; bats/swift via tree-sitter with a graceful brace-counting fallback), so braces or dedents inside strings, comments, and heredocs no longer mislead placement.
+Design: `extract_numbered_test_ids` extracts `#Rxxx-Tnn` tags from a test file and reports any tag found outside a test body. Block boundaries come from parsers (Python via stdlib `ast`; bats/swift via mandatory tree-sitter), so braces or dedents inside strings, comments, and heredocs no longer mislead placement.
 Tests:
 - R025-T01: Verify a tag inside a bats `@test` block is collected and an outside tag is flagged.
 - R025-T02: Verify ast collects a tag in a class test method and flags a module-level tag.
@@ -52,14 +52,28 @@ Tests:
 - R035-T01: Verify a bare `#Rxxx-Tnn` is reported while `#Rxxx-Tnn: text` is not.
 
 R040  Statement: Functions lacking a scoped requirement tag are detectable.
-Design: `find_untagged_functions` enumerates every function (Python via `ast`; bash/bats/swift/c/cpp via tree-sitter through `iter_function_spans`) and reports those with no scoped `#Rxxx`/`#Rxxx-Tnn` tag in their leading comment block or body (`function_is_tagged`); unsupported or unparseable files yield no findings.
+Design: `find_untagged_functions` enumerates every function (Python via `ast`; bash/bats/swift/c/cpp via tree-sitter through `iter_function_spans`) and reports those with no scoped `#Rxxx`/`#Rxxx-Tnn` tag in their leading comment block or body (`function_is_tagged`); unsupported files yield no findings.
 Tests:
 - R040-T01: Verify an untagged function is reported while ones tagged above or inside the body are not.
 - R040-T02: Verify private, nested, and dunder functions are enumerated (not exempt).
 - R040-T03: Verify a syntax-error Python file and an unsupported suffix yield no findings.
 - R040-T04: Verify tree-sitter languages (bash/swift) enumerate functions and flag untagged ones.
 
+R045  Statement: Tree-sitter-backed traceability parsing is strict and non-disablable.
+Design: `_treesitter_parser` and parser-backed helpers hard-fail when tree-sitter is unavailable or cannot parse a required language; there is intentionally no `STRICT_TRACEABILITY_TREESITTER` runtime knob and no downgrade fallback for tree-sitter-backed checks.
+Tests:
+- R045-T01: Verify parser-backed bats extraction raises when tree-sitter is unavailable.
+
+R050  Statement: Numbered #Rxxx-Tnn tags must be anchored to a real, parser-recognized test definition.
+Design: `find_unanchored_numbered_test_tags` enumerates parser-recognized executable test blocks via the same `_test_block_line_ranges` helper used for placement detection (Python `def test_*` via the stdlib `ast`; bats `@test`/swift `func test*` via tree-sitter) and reports any `#Rxxx-Tnn` tag not inside one. Test files whose language has no parseable test-block convention fail closed: every numbered tag in such a file is reported as unanchored rather than silently accepted from anywhere. A file with no numbered tags yields no findings.
+Tests:
+- R050-T01: Verify a numbered tag inside a real Python `def test_*` block is anchored while a module-level tag is reported.
+- R050-T02: Verify a numbered tag inside a bats `@test` block is anchored while one outside any block is reported.
+- R050-T03: Verify an unparseable test-language file with a numbered tag fails closed while a file with no numbered tags yields no findings.
+
 ## Changelog
 
-- 2026-06-06: Added R040 (per-function tag detection primitive) backing the opt-in function-tag-coverage gate.
+- 2026-06-06: Added R050 (`find_unanchored_numbered_test_tags`) backing the numbered-test-tag anchoring gate; tags must sit inside parser-recognized test definitions and unparseable test-language files fail closed.
+- 2026-06-06: Added R045 and removed the `STRICT_TRACEABILITY_TREESITTER` opt-out; tree-sitter-backed parsing is now mandatory/non-disablable.
+- 2026-06-06: Added R040 (per-function tag detection primitive) backing the function-tag-coverage gate.
 - 2026-06-06: Created; added the strict tag-text detectors (R030/R035) backing the unconditional mandatory-text enforcement.
