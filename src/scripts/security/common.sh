@@ -78,15 +78,71 @@ require_file() {
   fi
 }
 
-# Environment/.env fallback for secret resolution. The db-profiles
-# "1psa_or_env_item" value (and the *_PSA_ITEM knobs) double as the env var key
-# that supplies the secret when 1Password is unreachable (rate limit, auth error,
-# offline, etc). Try the item name verbatim, then an uppercased variant. Emits
-# only the value on stdout.
+# Environment/.env fallback for secret resolution mirrors 1psa semantics:
+# - Read RB_ENV_FALLBACK_FILE, else ONEPSA_ENV_PATH, else ~/.env.
+# - For password lookups, try ITEM.password then ITEM.
+# - Normalize item names so lowercase/hyphenated keys still resolve.
+rb_env_fallback_file_path() {
+  local dotenv_path="${RB_ENV_FALLBACK_FILE:-${ONEPSA_ENV_PATH:-${HOME}/.env}}"
+  printf '%s' "$dotenv_path"
+}
+
+rb_normalize_env_item_name() {
+  local raw="$1"
+  local normalized
+  normalized="$(printf '%s' "$raw" | tr '[:lower:]' '[:upper:]' | sed -E 's/[^A-Z0-9._]/_/g; s/^_+//; s/_+$//')"
+  printf '%s' "$normalized"
+}
+
+rb_onepsa_env_lookup_keys() {
+  local item="$1"
+  local field="${2:-password}"
+  local normalized_item normalized_field candidate
+  local seen=$'\n'
+  local -a candidates=()
+
+  [[ -n "$item" ]] || return 1
+  normalized_item="$(rb_normalize_env_item_name "$item")"
+  normalized_field="$(printf '%s' "$field" | tr '[:upper:]' '[:lower:]')"
+  normalized_field="${normalized_field//[[:space:]]/}"
+  [[ -n "$normalized_field" ]] || normalized_field="password"
+
+  if [[ "$normalized_field" == "password" ]]; then
+    candidates+=("${item}.password" "${normalized_item}.password" "$item" "$normalized_item")
+  else
+    candidates+=("${item}.${normalized_field}" "${normalized_item}.${normalized_field}")
+  fi
+
+  for candidate in "${candidates[@]}"; do
+    [[ -n "$candidate" ]] || continue
+    case "$seen" in
+      *$'\n'"$candidate"$'\n'*) continue ;;
+    esac
+    seen+="${candidate}"$'\n'
+    printf '%s\n' "$candidate"
+  done
+}
+
+rb_onepsa_env_lookup_keys_csv() {
+  local item="$1"
+  local field="${2:-password}"
+  local key joined=""
+  while IFS= read -r key; do
+    [[ -n "$key" ]] || continue
+    if [[ -z "$joined" ]]; then
+      joined="$key"
+    else
+      joined="${joined}, ${key}"
+    fi
+  done < <(rb_onepsa_env_lookup_keys "$item" "$field")
+  printf '%s' "$joined"
+}
+
 rb_lookup_dotenv_key() {
   local key="$1"
-  local dotenv_path="${RB_ENV_FALLBACK_FILE:-${HOME}/.env}"
+  local dotenv_path
   local value=""
+  dotenv_path="$(rb_env_fallback_file_path)"
   [[ -r "$dotenv_path" ]] || return 1
   set +e
   value="$(python3 - <<'PY' "$dotenv_path" "$key"
@@ -112,7 +168,13 @@ for raw_line in text.splitlines():
     key, value = line.split("=", 1)
     if key.strip() != target_key:
         continue
-    print(value.strip())
+    value = value.strip()
+    if len(value) >= 2 and (
+        (value[0] == "'" and value[-1] == "'")
+        or (value[0] == '"' and value[-1] == '"')
+    ):
+        value = value[1:-1]
+    print(value)
     raise SystemExit(0)
 
 raise SystemExit(1)
@@ -128,23 +190,20 @@ PY
 }
 
 rb_lookup_env_fallback() {
-  local name="$1"
-  local upper
-  if [[ -n "${!name:-}" ]]; then
-    printf '%s' "${!name}"
-    return 0
-  fi
-  upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
-  if [[ "$upper" != "$name" && -n "${!upper:-}" ]]; then
-    printf '%s' "${!upper}"
-    return 0
-  fi
-  if rb_lookup_dotenv_key "$name"; then
-    return 0
-  fi
-  if [[ "$upper" != "$name" ]] && rb_lookup_dotenv_key "$upper"; then
-    return 0
-  fi
+  local item="$1"
+  local field="${2:-password}"
+  local key value=""
+  while IFS= read -r key; do
+    [[ -n "$key" ]] || continue
+    if [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && [[ -n "${!key:-}" ]]; then
+      printf '%s' "${!key}"
+      return 0
+    fi
+    if value="$(rb_lookup_dotenv_key "$key")"; then
+      printf '%s' "$value"
+      return 0
+    fi
+  done < <(rb_onepsa_env_lookup_keys "$item" "$field")
   return 1
 }
 
@@ -153,17 +212,21 @@ rb_lookup_env_fallback() {
 # error, not found). Only hard-fail when neither source yields a value.
 rb_read_1psa_item() {
   local item="$1"
+  local field="${2:-password}"
   local timeout_seconds="${RB_ONEPSA_TIMEOUT_SECONDS:-12}"
   local output=""
   local exit_code=0
   local env_value=""
   local onepsa_empty=false
+  local fallback_keys fallback_file
+  fallback_keys="$(rb_onepsa_env_lookup_keys_csv "$item" "$field")"
+  fallback_file="$(rb_env_fallback_file_path)"
   if ! command -v 1psa >/dev/null 2>&1; then
-    if env_value="$(rb_lookup_env_fallback "$item")"; then
+    if env_value="$(rb_lookup_env_fallback "$item" "$field")"; then
       printf '%s' "$env_value"
       return 0
     fi
-    echo "❌ Missing required command: 1psa (and no environment fallback for item: ${item})" >&2
+    echo "❌ Missing required command: 1psa (and no environment fallback for item: ${item}; tried ${fallback_keys} in ${fallback_file})" >&2
     return 1
   fi
   set +e
@@ -197,7 +260,7 @@ PY
   fi
   # 1psa failed (timeout, rate limit, auth error, not found, ...). Try the
   # environment-variable fallback before giving up.
-  if env_value="$(rb_lookup_env_fallback "$item")"; then
+  if env_value="$(rb_lookup_env_fallback "$item" "$field")"; then
     if [[ "$exit_code" -eq 124 ]]; then
       echo "⚠️  1psa timed out after ${timeout_seconds}s for item: ${item}; using environment fallback" >&2
     elif [[ "$onepsa_empty" == "true" ]]; then
@@ -209,14 +272,14 @@ PY
     return 0
   fi
   if [[ "$exit_code" -eq 124 ]]; then
-    echo "❌ 1psa timed out after ${timeout_seconds}s while resolving item: ${item} (and no environment fallback found)" >&2
+    echo "❌ 1psa timed out after ${timeout_seconds}s while resolving item: ${item} (and no environment fallback found; tried ${fallback_keys} in ${fallback_file})" >&2
     return 1
   fi
   if [[ "$onepsa_empty" == "true" ]]; then
-    echo "❌ 1psa returned an empty value for item: ${item} (and no environment fallback found)" >&2
+    echo "❌ 1psa returned an empty value for item: ${item} (and no environment fallback found; tried ${fallback_keys} in ${fallback_file})" >&2
     return 1
   fi
-  echo "❌ failed to resolve 1psa item: ${item} (and no environment fallback found)" >&2
+  echo "❌ failed to resolve 1psa item: ${item} (and no environment fallback found; tried ${fallback_keys} in ${fallback_file})" >&2
   return 1
 }
 

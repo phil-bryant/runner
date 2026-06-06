@@ -28,6 +28,14 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "dynamic lane validates configured DAST app script before launch" {
+  #R012-T01: Verify the lane fails early when DAST_APP_SCRIPT does not exist.
+  run grep -q 'DAST app script not found' "$SRC"
+  [ "$status" -eq 0 ]
+  run grep -q 'resolved_dast_app_script' "$SRC"
+  [ "$status" -eq 0 ]
+}
+
 @test "dynamic lane defaults to DAST-on, SAST-off" {
   #R015-T01: Verify the RUN_DAST/RUN_SAST default toggles.
   run grep -q 'RUN_DAST="${RUN_DAST:-true}"' "$SRC"

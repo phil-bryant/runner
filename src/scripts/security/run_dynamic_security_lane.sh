@@ -827,9 +827,21 @@ PY
   local schemathesis_seed="${SCHEMATHESIS_SEED:-424242}"
   local schemathesis_max_examples="${SCHEMATHESIS_MAX_EXAMPLES:-25}"
   local zap_classification_target="${ZAP_CLASSIFICATION_TARGET:-}"
+  local resolved_dast_app_script=""
 
   if ! python_interpreter_usable "$dast_app_python"; then
     dast_app_python="python3"
+  fi
+  if [[ "$DAST_APP_SCRIPT" == /* ]]; then
+    resolved_dast_app_script="$DAST_APP_SCRIPT"
+  else
+    resolved_dast_app_script="./${DAST_APP_SCRIPT}"
+  fi
+  if [[ "$reuse_existing_api" != "true" ]]; then
+    if [[ ! -f "$resolved_dast_app_script" ]]; then
+      echo "❌ DAST app script not found: ${resolved_dast_app_script} (DAST_APP_SCRIPT=${DAST_APP_SCRIPT})"
+      exit 1
+    fi
   fi
   if [[ "$dast_app_python" == "python3" ]] && [[ -d "./${VENV_NAME}/lib" ]]; then
     for site_packages_dir in ./${VENV_NAME}/lib/python*/site-packages; do
@@ -1123,7 +1135,7 @@ PY
       TELLER_CLASSIFIER_API_HOST="$base_host" TELLER_CLASSIFIER_API_PORT="$base_port" \
       CLASSIFICATION_API_HOST="$base_host" CLASSIFICATION_API_PORT="$base_port" \
       CLASSY_API_HOST="$base_host" CLASSY_API_PORT="$base_port" \
-      "$dast_app_python" "./${DAST_APP_SCRIPT}" >"${report_dir_abs}/classification-api.log" 2>&1 &
+      "$dast_app_python" "$resolved_dast_app_script" >"${report_dir_abs}/classification-api.log" 2>&1 &
     classifier_api_pid="$!"
   fi
   wait_for_http "${base_url}/health" 45 "$classifier_api_pid"

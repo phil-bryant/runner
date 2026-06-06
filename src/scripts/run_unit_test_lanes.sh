@@ -362,7 +362,7 @@ SQL
       exit 1
     fi
     if [[ -z "$DB_PASSWORD" ]]; then
-      DB_PASSWORD="$(rb_read_1psa_item "${TELLER_PSA_ITEM:-${PG_ONEPSA_ITEM:-localhost_postgres_teller}}")"
+      DB_PASSWORD="$(rb_read_1psa_item "${TELLER_PSA_ITEM:-${PG_ONEPSA_ITEM:-localhost_postgres_teller}}" "password")"
     fi
     if [[ -z "$DB_PASSWORD" ]]; then
       echo "❌ failed to resolve teller DB password for SQL unit tests."
@@ -373,7 +373,7 @@ SQL
     if [[ "${SQL_TESTS_USE_ADMIN_ROLE:-true}" == "true" && "$DB_USER" != "postgres" ]]; then
       admin_password="${POSTGRES_ADMIN_PASSWORD:-}"
       if [[ -z "$admin_password" ]]; then
-        admin_password="$(rb_read_1psa_item "${POSTGRES_PSA_ITEM:-localhost_postgres_postgres}" 2>/dev/null || true)"
+        admin_password="$(rb_read_1psa_item "${POSTGRES_PSA_ITEM:-localhost_postgres_postgres}" "password" 2>/dev/null || true)"
       fi
       if [[ -n "$admin_password" ]]; then
         echo "ℹ️  Using postgres admin role for pgTAP execution."

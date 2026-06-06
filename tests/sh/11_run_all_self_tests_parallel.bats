@@ -4,7 +4,7 @@
 # golden. Behavior of the golden itself is tested under its own requirements.
 
 setup() {
-  REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd -P)"
+  REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   POINTER="${REPO_ROOT}/11_run_all_self_tests_parallel.sh"
 }
 

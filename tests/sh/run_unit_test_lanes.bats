@@ -62,6 +62,7 @@ teardown() {
   #R035-T01: Verify SQL lane preflight exits with setup diagnostic when profile exports fail.
   mkdir -p "${RUNNER}/tests/sql"
   run env PATH="${STUB_BIN}:${PATH}" \
+    RUNBOOK_REPO_ROOT="$RUNNER" \
     RUN_SHELL_TESTS=false RUN_PYTHON_TESTS=false RUN_SQL_TESTS=true RUN_SWIFT_TESTS=false \
     SQL_TESTS_DIR="${RUNNER}/tests/sql" \
     bash "$LANES"
@@ -98,6 +99,7 @@ EOF
   chmod +x "${STUB_BIN}/swift"
 
   run env PATH="${STUB_BIN}:${PATH}" \
+    RUNBOOK_REPO_ROOT="$RUNNER" \
     RUN_SHELL_TESTS=false RUN_PYTHON_TESTS=false RUN_SQL_TESTS=false RUN_SWIFT_TESTS=true \
     bash "$LANES"
   [ "$status" -eq 0 ]
@@ -125,8 +127,135 @@ EOF
   chmod +x "${STUB_BIN}/swift"
 
   run env PATH="${STUB_BIN}:${PATH}" \
+    RUNBOOK_REPO_ROOT="$RUNNER" \
     RUN_SHELL_TESTS=false RUN_PYTHON_TESTS=false RUN_SQL_TESTS=false RUN_SWIFT_TESTS=true \
     bash "$LANES"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Skipping Swift unit tests in restricted runtime"* ]]
+}
+
+@test "sql lane resolves primary password from dotenv ITEM.password fallback" {
+  #R025-T02: Verify SQL lane resolves primary DB password via ITEM.password fallback when 1psa fails.
+  mkdir -p "${RUNNER}/tests/sql"
+  cat > "${RUNNER}/tests/sql/smoke.sql" <<'EOF'
+SELECT 1;
+EOF
+  cat > "${RUNNER}/src/scripts/db_profile_export.sh" <<'EOF'
+#!/usr/bin/env bash
+cat <<'OUT'
+DB_DIALECT=postgresql
+PROFILE_NAME=local
+PROFILE_TARGET=local
+PG_HOST=localhost
+PG_PORT=5432
+PG_DBNAME=prod
+PG_USER=teller
+PG_SSLMODE=disable
+PG_SEARCH_PATH=teller
+PG_RUNTIME_ROLE=teller_write
+PG_ONEPSA_ITEM=LOCALHOST_POSTGRES_TELLER
+OUT
+EOF
+  chmod +x "${RUNNER}/src/scripts/db_profile_export.sh"
+
+  cat > "${STUB_BIN}/1psa" <<'EOF'
+#!/usr/bin/env bash
+echo "authentication error: rate limit exceeded" >&2
+exit 1
+EOF
+  chmod +x "${STUB_BIN}/1psa"
+
+  cat > "${STUB_BIN}/psql" <<EOF
+#!/usr/bin/env bash
+echo "psql:\${PGUSER}:\${PGPASSWORD}" >> "${CALLS_LOG}"
+echo "1"
+EOF
+  chmod +x "${STUB_BIN}/psql"
+
+  cat > "${STUB_BIN}/pg_prove" <<EOF
+#!/usr/bin/env bash
+echo "pg_prove:\${PGUSER}:\${PGPASSWORD}" >> "${CALLS_LOG}"
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/pg_prove"
+
+  dotenv_path="${FIXTURE}/db.env"
+  cat > "$dotenv_path" <<'EOF'
+LOCALHOST_POSTGRES_TELLER.password=primary_secret
+EOF
+
+  run env PATH="${STUB_BIN}:${PATH}" \
+    RUNBOOK_REPO_ROOT="$RUNNER" \
+    RUN_SHELL_TESTS=false RUN_PYTHON_TESTS=false RUN_SQL_TESTS=true RUN_SWIFT_TESTS=false \
+    SQL_TESTS_USE_ADMIN_ROLE=false \
+    SQL_TESTS_DIR="${RUNNER}/tests/sql" \
+    RB_ENV_FALLBACK_FILE="$dotenv_path" \
+    bash "$LANES"
+  [ "$status" -eq 0 ]
+  calls="$(<"${CALLS_LOG}")"
+  [[ "$calls" == *"psql:teller:primary_secret"* ]]
+  [[ "$calls" == *"pg_prove:teller:primary_secret"* ]]
+}
+
+@test "sql lane resolves admin password from dotenv ITEM.password fallback" {
+  #R025-T03: Verify SQL lane resolves admin-role password via ITEM.password fallback when 1psa fails.
+  mkdir -p "${RUNNER}/tests/sql"
+  cat > "${RUNNER}/tests/sql/smoke.sql" <<'EOF'
+SELECT 1;
+EOF
+  cat > "${RUNNER}/src/scripts/db_profile_export.sh" <<'EOF'
+#!/usr/bin/env bash
+cat <<'OUT'
+DB_DIALECT=postgresql
+PROFILE_NAME=local
+PROFILE_TARGET=local
+PG_HOST=localhost
+PG_PORT=5432
+PG_DBNAME=prod
+PG_USER=teller
+PG_SSLMODE=disable
+PG_SEARCH_PATH=teller
+PG_RUNTIME_ROLE=teller_write
+PG_ONEPSA_ITEM=LOCALHOST_POSTGRES_TELLER
+OUT
+EOF
+  chmod +x "${RUNNER}/src/scripts/db_profile_export.sh"
+
+  cat > "${STUB_BIN}/1psa" <<'EOF'
+#!/usr/bin/env bash
+echo "authentication error: rate limit exceeded" >&2
+exit 1
+EOF
+  chmod +x "${STUB_BIN}/1psa"
+
+  cat > "${STUB_BIN}/psql" <<EOF
+#!/usr/bin/env bash
+echo "psql:\${PGUSER}:\${PGPASSWORD}" >> "${CALLS_LOG}"
+echo "1"
+EOF
+  chmod +x "${STUB_BIN}/psql"
+
+  cat > "${STUB_BIN}/pg_prove" <<EOF
+#!/usr/bin/env bash
+echo "pg_prove:\${PGUSER}:\${PGPASSWORD}" >> "${CALLS_LOG}"
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/pg_prove"
+
+  dotenv_path="${FIXTURE}/db.env"
+  cat > "$dotenv_path" <<'EOF'
+LOCALHOST_POSTGRES_TELLER.password=primary_secret
+LOCALHOST_POSTGRES_POSTGRES.password=admin_secret
+EOF
+
+  run env PATH="${STUB_BIN}:${PATH}" \
+    RUNBOOK_REPO_ROOT="$RUNNER" \
+    RUN_SHELL_TESTS=false RUN_PYTHON_TESTS=false RUN_SQL_TESTS=true RUN_SWIFT_TESTS=false \
+    SQL_TESTS_DIR="${RUNNER}/tests/sql" \
+    RB_ENV_FALLBACK_FILE="$dotenv_path" \
+    bash "$LANES"
+  [ "$status" -eq 0 ]
+  calls="$(<"${CALLS_LOG}")"
+  [[ "$calls" == *"psql:postgres:admin_secret"* ]]
+  [[ "$calls" == *"pg_prove:postgres:admin_secret"* ]]
 }

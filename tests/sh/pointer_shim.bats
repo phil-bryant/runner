@@ -7,6 +7,8 @@ setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
   SHIM_SRC="${REPO_ROOT}/src/scripts/pointer_shim.sh"
   FIXTURE="$(cd "$(mktemp -d)" && pwd -P)"
+  # Keep shim behavior tests deterministic even when parent runners export shim state.
+  unset POINTER_SHIM_PROFILE_LOADED RUNBOOK_PROFILE
 
   mkdir -p "${FIXTURE}/runner/src/scripts" "${FIXTURE}/runner/config/runbook"
   cp "$SHIM_SRC" "${FIXTURE}/runner/src/scripts/pointer_shim.sh"

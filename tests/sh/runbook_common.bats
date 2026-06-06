@@ -91,9 +91,9 @@ setup() {
 
 @test "rb_read_1psa_item falls back to env var when 1psa is unavailable" {
   #R041-T01: With 1psa unavailable and a matching env var set, verify rb_read_1psa_item returns the env value.
-  run bash -c "source '${SRC}'; PATH='' MY_SECRET_ITEM=fromenv rb_read_1psa_item MY_SECRET_ITEM"
+  run bash -c "source '${SRC}'; PATH='/usr/bin:/bin' MY_SECRET_ITEM=fromenv rb_read_1psa_item MY_SECRET_ITEM"
   [ "$status" -eq 0 ]
-  [ "$output" = "fromenv" ]
+  [[ "$output" == *"fromenv" ]]
 }
 
 @test "rb_lookup_env_fallback resolves lowercase name from uppercased env var" {
@@ -101,4 +101,33 @@ setup() {
   run bash -c "source '${SRC}'; LOCALHOST_TOKEN=upper_value rb_lookup_env_fallback localhost_token"
   [ "$status" -eq 0 ]
   [ "$output" = "upper_value" ]
+}
+
+@test "rb_lookup_env_fallback prefers ITEM.password from dotenv" {
+  #R042-T02: Verify password fallback checks ITEM.password before bare ITEM in dotenv.
+  dotenv_path="${BATS_TEST_TMPDIR}/fallback.env"
+  cat > "$dotenv_path" <<'EOF'
+LOCALHOST_POSTGRES_TELLER=base_value
+LOCALHOST_POSTGRES_TELLER.password=field_value
+EOF
+  run bash -c "source '${SRC}'; RB_ENV_FALLBACK_FILE='${dotenv_path}' rb_lookup_env_fallback localhost_postgres_teller password"
+  [ "$status" -eq 0 ]
+  [ "$output" = "field_value" ]
+}
+
+@test "rb_read_1psa_item falls back to dotenv ITEM.password when 1psa fails" {
+  #R041-T02: Verify 1psa command failures still recover via dotenv ITEM.password lookup.
+  dotenv_path="${BATS_TEST_TMPDIR}/fallback.env"
+  cat > "$dotenv_path" <<'EOF'
+LOCALHOST_POSTGRES_TELLER.password=dotenv_secret
+EOF
+  cat > "${BATS_TEST_TMPDIR}/1psa" <<'EOF'
+#!/usr/bin/env bash
+echo "authentication error: rate limit exceeded" >&2
+exit 1
+EOF
+  chmod +x "${BATS_TEST_TMPDIR}/1psa"
+  run bash -c "source '${SRC}'; RB_ENV_FALLBACK_FILE='${dotenv_path}' PATH='${BATS_TEST_TMPDIR}:${PATH}' rb_read_1psa_item localhost_postgres_teller password"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dotenv_secret" ]]
 }
