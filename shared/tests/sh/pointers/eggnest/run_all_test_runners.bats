@@ -2,12 +2,7 @@
 
 #R001: shard-3 function tag
 src() {
-  printf '%s' "${RUNBOOK_REPO_ROOT}/07_run_all_tests_parallel.sh"
-}
-
-#R001: shard-3 function tag
-profile_path() {
-  printf 'config/runbook/%s.env' "${RUNBOOK_REPO_NAME}"
+  printf '%s' "${RUNBOOK_REPO_ROOT}/run_all_test_runners.sh"
 }
 
 @test "centralizes umask/strict mode via the shared pointer shim" {
@@ -22,9 +17,9 @@ profile_path() {
   [ "$status" -eq 0 ]
 }
 
-@test "selects its runbook profile explicitly before delegation" {
-  #R010-T01: Verify the pointer sets RUNBOOK_PROFILE to the repo profile.
-  run grep "RUNBOOK_PROFILE=\"${RUNBOOK_REPO_NAME}\"" "$(src)"
+@test "selects the runners meta-run profile explicitly before delegation" {
+  #R010-T01: Verify the pointer calls select_runbook_profile "eggnest-runners".
+  run grep 'select_runbook_profile "eggnest-runners"' "$(src)"
   [ "$status" -eq 0 ]
 }
 
@@ -32,12 +27,4 @@ profile_path() {
   #R015-T01: Verify the pointer calls delegate_golden "07_run_all_tests_parallel.sh" with "$@".
   run grep 'delegate_golden "07_run_all_tests_parallel.sh" "$@"' "$(src)"
   [ "$status" -eq 0 ]
-}
-
-@test "forwards optional skip flags without local filtering" {
-  #R015-T02: Verify the pointer relies on argument passthrough and adds no local --no-ui/--no-mutation/--no-av filtering.
-  run grep '\$@' "$(src)"
-  [ "$status" -eq 0 ]
-  run grep -E -- '--no-ui|--no-mutation|--no-av' "$(src)"
-  [ "$status" -ne 0 ]
 }

@@ -73,21 +73,64 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+#R011: Optional "runners" discovery mode. Instead of tNN_ lanes under ./tests, discover one canonical
+# run-all pointer per repo root (the eggnest umbrella self-run lane). Lanes become repo-relative paths
+# rather than bare basenames; lane_script_path/lane_log_label below absorb that difference so the rest
+# of the orchestrator is unchanged. Default (false) preserves the historical tests/tNN behavior exactly.
+PARALLEL_CHECKS_RUNNERS_MODE="${PARALLEL_CHECKS_RUNNERS_MODE:-false}"
+# Shallow, executable-only, NN_-anchored; the *tests_parallel family also catches runner's
+# 11_run_all_self_tests_parallel.sh self-run pointer.
+RUNNERS_DISCOVERY_GLOB="${RUNNERS_DISCOVERY_GLOB:-[0-9][0-9]_run_all_*tests_parallel.sh}"
+RUNNERS_DISCOVERY_MAXDEPTH="${RUNNERS_DISCOVERY_MAXDEPTH:-2}"
+
+#R011: Resolve a lane token to its executable path. Runners-mode tokens are repo-relative paths;
+# default-mode tokens are bare basenames under CHECKS_DIR.
+lane_script_path() {
+  if [[ "$PARALLEL_CHECKS_RUNNERS_MODE" == "true" ]]; then
+    # Prefix ./ so a repo-root lane (e.g. 03_run_all_tests_parallel.sh, no slash) execs as a file path
+    # rather than triggering a PATH command lookup (exit 127).
+    printf './%s' "$1"
+  else
+    printf '%s/%s' "$CHECKS_DIR" "$1"
+  fi
+}
+#R011: Resolve a lane token to a unique log label. Slashes become dashes so multi-repo pointers that
+# share a basename (mailcart/teller both ship 06_run_all_tests_parallel.sh) do not collide. Default-mode
+# basenames contain no slash, so labels are byte-identical to the historical "${token%.sh}".
+lane_log_label() {
+  local stem="${1%.sh}"
+  printf '%s' "${stem//\//-}"
+}
+
 #R010: Discover numbered check scripts from tests/ (filesystem only; no order manifest).
 SELF_SCRIPT_BASENAME="$(basename "${BASH_SOURCE[0]}")"
 CHECKS_DIR="./tests"
 CHECKS=()
-discover_glob="${CHECKS_DIR}/t*.sh"
-for candidate in $discover_glob; do
-  [[ -e "$candidate" ]] || continue
-  script="$(basename "$candidate")"
-  if [[ "$script" == "$SELF_SCRIPT_BASENAME" ]]; then
-    continue
-  fi
-  if [[ "$script" =~ (^|_)tests?(_|\.sh$) ]]; then
-    CHECKS+=("$script")
-  fi
-done
+if [[ "$PARALLEL_CHECKS_RUNNERS_MODE" == "true" ]]; then
+  #R011: One canonical run-all pointer per repo root (root + immediate subrepos). The SELF_SCRIPT_BASENAME
+  # guard drops the golden engine itself (runner/07_run_all_tests_parallel.sh shares this basename),
+  # leaving runner represented by its 11_run_all_self_tests_parallel.sh self-run pointer.
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] || continue
+    rel="${candidate#./}"
+    if [[ "$(basename "$rel")" == "$SELF_SCRIPT_BASENAME" ]]; then
+      continue
+    fi
+    CHECKS+=("$rel")
+  done < <(find . -maxdepth "$RUNNERS_DISCOVERY_MAXDEPTH" -name "$RUNNERS_DISCOVERY_GLOB" -type f -perm -u=x | sort)
+else
+  discover_glob="${CHECKS_DIR}/t*.sh"
+  for candidate in $discover_glob; do
+    [[ -e "$candidate" ]] || continue
+    script="$(basename "$candidate")"
+    if [[ "$script" == "$SELF_SCRIPT_BASENAME" ]]; then
+      continue
+    fi
+    if [[ "$script" =~ (^|_)tests?(_|\.sh$) ]]; then
+      CHECKS+=("$script")
+    fi
+  done
+fi
 if [[ "${#CHECKS[@]}" -gt 0 ]]; then
   sorted_checks=()
   while IFS= read -r line; do
@@ -207,7 +250,13 @@ PROGRESS_INTERVAL_SECONDS="${PARALLEL_CHECKS_PROGRESS_INTERVAL_SECONDS:-1}"
 if [[ ! "$PROGRESS_INTERVAL_SECONDS" =~ ^[0-9]+$ || "$PROGRESS_INTERVAL_SECONDS" -le 0 ]]; then
   PROGRESS_INTERVAL_SECONDS=1
 fi
-LOCK_FILE="${RUNBOOK_REPO_ROOT}/.07_run_all_tests_parallel.lock"
+#R050: Runners-mode meta-run and a same-root tNN run (eggnest root hosts both this meta-run and its own
+# 03_ self-run lane) must not share the single-run lock; key the lock name on the mode.
+if [[ "$PARALLEL_CHECKS_RUNNERS_MODE" == "true" ]]; then
+  LOCK_FILE="${RUNBOOK_REPO_ROOT}/.run_all_test_runners.lock"
+else
+  LOCK_FILE="${RUNBOOK_REPO_ROOT}/.07_run_all_tests_parallel.lock"
+fi
 PROGRESS_INLINE=false
 if [[ -t 1 ]]; then
   PROGRESS_INLINE=true
@@ -314,7 +363,7 @@ terminate_child_checks() {
       if ! kill -0 "$pid" 2>/dev/null; then
         continue
       fi
-      log="${REPORT_DIR}/${script%.sh}.log"
+      log="${REPORT_DIR}/$(lane_log_label "$script").log"
       cleanup_file="${log}.cleanup"
       printf '%s signal=%s reason=%s pid=%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$signal" "$reason" "$pid" >> "$cleanup_file"
       emit_cleanup_line "ℹ️  cleanup: ${reason}; sending ${signal} to ${script} (pid ${pid}, pgid -${pid})"
@@ -473,11 +522,20 @@ print_cleanup_provenance() {
 }
 
 for script in "${ALL_CHECKS[@]}"; do
-  if [[ ! -f "${CHECKS_DIR}/${script}" ]]; then
-    echo "❌ FAIL: expected check script not found: ${CHECKS_DIR}/${script}" >&2
+  if [[ ! -f "$(lane_script_path "$script")" ]]; then
+    echo "❌ FAIL: expected check script not found: $(lane_script_path "$script")" >&2
     exit 1
   fi
 done
+
+#R012: Optional dry-run. Print the resolved lane set (log label + executable path) and exit without
+# launching anything. Lets the runners-mode meta-runner show exactly which runners it would invoke.
+if [[ "${PARALLEL_CHECKS_LIST_ONLY:-}" == "1" ]]; then
+  for script in "${ALL_CHECKS[@]}"; do
+    printf '%s\t%s\n' "$(lane_log_label "$script")" "$(lane_script_path "$script")"
+  done
+  exit 0
+fi
 
 echo "▶ Starting parallel checks (${#ALL_CHECKS[@]} scripts)..."
 
@@ -492,8 +550,8 @@ run_lane_worker() {
   local script="$1"
   set +e
   unset VIRTUAL_ENV
-  local script_path="${CHECKS_DIR}/${script}"
-  local log="${REPORT_DIR}/${script%.sh}.log"
+  local script_path="$(lane_script_path "$script")"
+  local log="${REPORT_DIR}/$(lane_log_label "$script").log"
   # Keep lanes parallel while isolating shared resources.
   local lane_api_url="${PARALLEL_CLASSIFIER_API_URL:-https://127.0.0.1:${PARALLEL_CLASSIFIER_API_PORT:-8787}}"
   local lane_dast_base_port="${PARALLEL_DAST_BASE_PORT:-8788}"
@@ -501,7 +559,21 @@ run_lane_worker() {
   local lane_dast_db_profile="${PARALLEL_DAST_DB_PROFILE:-${TELLER_DB_PROFILE:-}}"
   local crash_check_delay="${PARALLEL_CRASH_CHECK_DELAY_SECONDS:-0}"
   local db_lock_dir="${DB_LANE_LOCK_DIR:-${SCRIPT_DIR}/.parallel-db-tests.lock}"
+  #R066: macOS UI regression lanes share a single RUNNER_HOME-global lock so only one runs at a time,
+  # even across concurrent repo runs (e.g. under the runners-mode meta-run, classy's t11 vs mailcart's
+  # t12). SCRIPT_DIR is RUNNER_HOME and every repo's pointer execs this same golden, so this dir is shared.
+  local ui_lock_dir="${UI_LANE_LOCK_DIR:-${SCRIPT_DIR}/.parallel-ui-tests.lock}"
+  local ui_pattern="${UI_REGRESSION_PATTERN:-macos_ui_regression}"
   local exit_code=0
+  #R011: script_path/log are already resolved above; drop runners-mode and meta-only env so a child lane
+  # that is itself a run-all pointer (every runners-mode lane) execs its golden in normal tNN discovery
+  # mode, in its own repo's report dir, with its own quality scoring — never recursively or sharing ours.
+  # Also drop the meta-run's loaded-profile markers so each child pointer re-resolves and re-sources ITS
+  # OWN runbook profile (e.g. eggnest.env's TRACEABILITY_* roots); otherwise POINTER_SHIM_PROFILE_LOADED=1
+  # leaks in and suppresses delegate_golden's auto-load for every child.
+  unset PARALLEL_CHECKS_RUNNERS_MODE RUNNERS_DISCOVERY_GLOB RUNNERS_DISCOVERY_MAXDEPTH \
+    PARALLEL_CHECKS_REPORT_DIR QUALITY_SCORING_ENABLED \
+    POINTER_SHIM_PROFILE_LOADED RUNBOOK_PROFILE
   if [[ "$script" == *verify_macos_crash_test.sh && "$crash_check_delay" =~ ^[0-9]+$ && "$crash_check_delay" -gt 0 ]]; then
     sleep "$crash_check_delay"
   fi
@@ -549,6 +621,39 @@ run_lane_worker() {
       exit_code=$?
     fi
     rmdir "$db_lock_dir" 2>/dev/null || true
+  elif [[ "$script" == *"$ui_pattern"* ]]; then
+    #R066: Serialize macOS UI regression lanes through a pid-aware, RUNNER_HOME-global lock. No
+    # unconditional startup cleanup (concurrent goldens would stomp a held lock); reclaim only on a
+    # dead owner so simultaneous classy/mailcart UI lanes wait instead of fighting the window server.
+    local ui_lock_timeout="${PARALLEL_UI_LOCK_WAIT_TIMEOUT_SECONDS:-1800}"
+    local ui_lock_start ui_now ui_owner
+    ui_lock_start="$(date +%s)"
+    while ! mkdir "$ui_lock_dir" 2>/dev/null; do
+      ui_owner=""
+      if [[ -f "${ui_lock_dir}/pid" ]]; then
+        ui_owner="$(<"${ui_lock_dir}/pid")"
+        if [[ -n "$ui_owner" ]] && ! kill -0 "$ui_owner" 2>/dev/null; then
+          rm -rf "$ui_lock_dir" 2>/dev/null || true
+          continue
+        fi
+      else
+        rm -rf "$ui_lock_dir" 2>/dev/null || true
+        continue
+      fi
+      ui_now="$(date +%s)"
+      if (( ui_now - ui_lock_start >= ui_lock_timeout )); then
+        printf '%s\n' "❌ FAIL: timed out waiting for macOS UI lane lock (${ui_lock_timeout}s)." >"$log"
+        exit_code=1
+        break
+      fi
+      sleep 1
+    done
+    if [[ "$exit_code" -eq 0 ]]; then
+      echo "${BASHPID:-$$}" > "${ui_lock_dir}/pid" 2>/dev/null || true
+      run_lane
+      exit_code=$?
+      rm -rf "$ui_lock_dir" 2>/dev/null || true
+    fi
   else
     run_lane
     exit_code=$?
@@ -557,13 +662,13 @@ run_lane_worker() {
   #R025: Signal completion immediately over the FIFO so the reader prints in completion order.
   printf '%s|%s\n' "$script" "$exit_code" >&3
 }
-export -f run_lane_worker
-export CHECKS_DIR REPORT_DIR SCRIPT_DIR
+export -f run_lane_worker lane_script_path lane_log_label
+export CHECKS_DIR REPORT_DIR SCRIPT_DIR PARALLEL_CHECKS_RUNNERS_MODE UI_REGRESSION_PATTERN
 
 #R001: shard-3 function tag
 launch_check_script() {
   local script="$1"
-  local log="${REPORT_DIR}/${script%.sh}.log"
+  local log="${REPORT_DIR}/$(lane_log_label "$script").log"
   safe_move_to_trash "${log}"
   safe_move_to_trash "${log}.exit"
   safe_move_to_trash "${log}.start"
@@ -609,7 +714,7 @@ record_check_result() {
   done
   reported_scripts+=("$completed_script")
   reported=$((reported + 1))
-  local log="${REPORT_DIR}/${completed_script%.sh}.log"
+  local log="${REPORT_DIR}/$(lane_log_label "$completed_script").log"
   local start_file="${log}.start"
   local start_epoch=0
   if [[ -f "$start_file" ]]; then
@@ -652,7 +757,7 @@ record_check_result() {
 recover_missing_completions() {
   local script="" exit_file=""
   for script in "${ALL_CHECKS[@]}"; do
-    exit_file="${REPORT_DIR}/${script%.sh}.log.exit"
+    exit_file="${REPORT_DIR}/$(lane_log_label "$script").log.exit"
     if [[ -f "$exit_file" ]]; then
       record_check_result "$script" "$(<"$exit_file")"
     fi
@@ -663,7 +768,7 @@ recover_missing_completions() {
 all_checks_have_exit_files() {
   local script="" exit_file=""
   for script in "${ALL_CHECKS[@]}"; do
-    exit_file="${REPORT_DIR}/${script%.sh}.log.exit"
+    exit_file="${REPORT_DIR}/$(lane_log_label "$script").log.exit"
     if [[ ! -f "$exit_file" ]]; then
       return 1
     fi

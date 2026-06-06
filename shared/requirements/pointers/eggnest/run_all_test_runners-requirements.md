@@ -1,8 +1,8 @@
-# 07 Run All Tests Parallel Wrapper Requirements
+# Run All Test Runners Wrapper Requirements
 
 ## Scope
 
-Applies to `07_run_all_tests_parallel.sh`.
+Applies to `run_all_test_runners.sh`.
 
 R001  Statement: Pointer runs with secure umask and strict shell mode via the shared shim.
 Design: Source `src/scripts/pointer_shim.sh`, which sets `umask 007` and `set -euo pipefail` before delegation.
@@ -14,13 +14,12 @@ Design: The sourced `pointer_shim.sh` resolves `RUNNER_HOME` and `RUNBOOK_REPO_R
 Tests:
 - R005-T01: Verify the pointer locates the shim under `runner/src/scripts`.
 
-R010  Statement: Pointer selects its runbook profile explicitly before delegation.
-Design: Set `RUNBOOK_PROFILE="classy"` so the shim sources `runner/config/runbook/classy.env` and exports `RUNBOOK_REPO_ROOT`.
+R010  Statement: Pointer selects the runners meta-run profile explicitly before delegation.
+Design: Call `select_runbook_profile "eggnest-runners"` so the shim sources `runner/config/runbook/eggnest-runners.env`, enabling runners-discovery mode (`PARALLEL_CHECKS_RUNNERS_MODE=true`) and exporting `RUNBOOK_REPO_ROOT`.
 Tests:
-- R010-T01: Verify the pointer sets `RUNBOOK_PROFILE` to the repo profile.
+- R010-T01: Verify the pointer calls `select_runbook_profile "eggnest-runners"`.
 
 R015  Statement: Pointer delegates execution to the mapped runner golden.
-Design: Call `delegate_golden "07_run_all_tests_parallel.sh" "$@"` so the shim execs `${RUNNER_HOME}/07_run_all_tests_parallel.sh` with arguments passed through unchanged.
+Design: Call `delegate_golden "07_run_all_tests_parallel.sh" "$@"` so the shim execs `${RUNNER_HOME}/07_run_all_tests_parallel.sh` (the parallel orchestrator, in runners-discovery mode) with arguments passed through unchanged.
 Tests:
 - R015-T01: Verify the pointer calls `delegate_golden "07_run_all_tests_parallel.sh"` with `"$@"`.
-- R015-T02: Verify the pointer relies on argument passthrough and adds no local `--no-ui`/`--no-mutation`/`--no-av` filtering.

@@ -124,3 +124,28 @@ setup() {
   #R070-T01: telemetry block is guarded by QUALITY_SCORING_ENABLED
   grep -q 'QUALITY_SCORING_ENABLED' "$SCRIPT"
 }
+
+@test "discovers per-repo run-all pointers in runners mode" {
+  #R011-T01: runners discovery is gated on PARALLEL_CHECKS_RUNNERS_MODE via a shallow find + glob
+  grep -q 'PARALLEL_CHECKS_RUNNERS_MODE' "$SCRIPT"
+  grep -q 'RUNNERS_DISCOVERY_GLOB' "$SCRIPT"
+  grep -q 'find . -maxdepth' "$SCRIPT"
+}
+
+@test "resolves runners-mode lanes and isolates child env" {
+  #R011-T02: worker resolves lanes via lane_script_path/lane_log_label and unsets runners-mode env before exec
+  grep -q 'lane_script_path' "$SCRIPT"
+  grep -q 'lane_log_label' "$SCRIPT"
+  grep -q 'unset PARALLEL_CHECKS_RUNNERS_MODE' "$SCRIPT"
+}
+
+@test "lists the resolved lane set as a dry run" {
+  #R012-T01: PARALLEL_CHECKS_LIST_ONLY=1 prints lanes and exits before launching
+  grep -q 'PARALLEL_CHECKS_LIST_ONLY' "$SCRIPT"
+}
+
+@test "serializes macOS UI lanes through a shared lock" {
+  #R066-T01: UI_REGRESSION_PATTERN lanes are gated behind a pid-aware .parallel-ui-tests.lock with a bounded wait
+  grep -q '\.parallel-ui-tests\.lock' "$SCRIPT"
+  grep -q 'PARALLEL_UI_LOCK_WAIT_TIMEOUT_SECONDS' "$SCRIPT"
+}
