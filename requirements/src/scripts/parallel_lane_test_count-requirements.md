@@ -36,6 +36,7 @@ Tests:
 - R018-T01: Verify the macOS UI regression lane reads the scenario count from the timing summary line.
 - R018-T02: Verify selector syntax (`1-3,5,7-8`) expands to a unique selected-step count.
 - R018-T03: Verify the steps artifact selector is used when the lane log has no parsable scenario summary/selector line.
+- R018-T04: Verify macOS UI regression output with XCTest summaries uses the executed test total.
 
 R020  Statement: Resolve the code-quality lane count from non-skipped sub-check reports.
 Design: Count quality sub-check report files that exist and whose content is not exactly `skipped`.
