@@ -13,8 +13,10 @@
 #   - Source this file via a path resolved relative to the pointer, e.g.
 #       source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../runner/src/scripts" \
 #         && pwd -P)/pointer_shim.sh"
-#   - Select an explicit profile after sourcing:
+#   - Prefer selecting an explicit profile after sourcing:
 #       select_runbook_profile "<repo>"
+#     Backward compatibility: if the pointer exports RUNBOOK_PROFILE and calls
+#     delegate_golden directly, delegate_golden will auto-load that profile.
 #   - Call: delegate_golden "<target-relative-to-RUNNER_HOME>" "$@"
 
 #R001: Enable secure umask and strict shell mode for every pointer before delegation.
@@ -54,6 +56,7 @@ select_runbook_profile() {
   fi
 
   export RUNBOOK_PROFILE="${runbook_profile}"
+  export POINTER_SHIM_PROFILE_LOADED="1"
   # shellcheck source=/dev/null
   source "${runbook_profile_env}"
 }
@@ -62,5 +65,10 @@ select_runbook_profile() {
 delegate_golden() {
   local target="$1"
   shift
+  # Backward-compat mode for pointers that set RUNBOOK_PROFILE but do not call
+  # select_runbook_profile explicitly.
+  if [[ -n "${RUNBOOK_PROFILE:-}" && "${POINTER_SHIM_PROFILE_LOADED:-}" != "1" ]]; then
+    select_runbook_profile "${RUNBOOK_PROFILE}"
+  fi
   exec "${RUNNER_HOME}/${target}" "$@"
 }
