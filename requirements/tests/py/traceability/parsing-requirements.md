@@ -32,9 +32,14 @@ Tests:
 - R020-T01: Verify an unnumbered bullet under `Tests:` is reported.
 
 R025  Statement: Numbered test tags must live inside executable test blocks.
-Design: `extract_numbered_test_ids` extracts `#Rxxx-Tnn` tags from a test file and reports any tag found outside a `@test`/`def test*`/`func test*` body.
+Design: `extract_numbered_test_ids` extracts `#Rxxx-Tnn` tags from a test file and reports any tag found outside a test body. Block boundaries come from a parser (Python via the stdlib `ast`; bats/swift via tree-sitter with a graceful brace-counting fallback), so braces or dedents inside strings, comments, and heredocs no longer mislead placement.
 Tests:
 - R025-T01: Verify a tag inside a bats `@test` block is collected and an outside tag is flagged.
+- R025-T02: Verify ast collects a tag in a class test method and flags a module-level tag.
+- R025-T03: Verify a dedented brace inside a Python multi-line string does not end the block.
+- R025-T04: Verify an unparseable Python file falls back to the indentation scan without raising.
+- R025-T05: Verify a stray brace inside a bats string does not close the block early.
+- R025-T06: Verify swift closure/string braces do not end a test function early.
 
 R030  Statement: Bare source #R tags without scoped text are detectable.
 Design: `find_unscoped_source_tags` returns line diagnostics for `#Rxxx` source tags missing the `: <text>` scope, ignoring numbered test tags.
