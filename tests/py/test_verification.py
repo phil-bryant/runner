@@ -143,3 +143,27 @@ def test_engine_self_coverage_has_no_exemption():
     files = set(list_repository_software_files(repo_root))
     assert "tests/py/traceability/verification.py" in files
     assert "tests/t04_run_requirements_traceability_tests.sh" in files
+
+
+def test_function_tag_gate_default_on_and_opt_out(tmp_path, monkeypatch):
+    #R060-T01: the gate is enforced by default and only disabled by an explicit false.
+    monkeypatch.delenv("STRICT_TRACEABILITY_FUNCTION_TAGS", raising=False)
+    monkeypatch.delenv("TRACEABILITY_FUNCTION_TAG_BASELINE", raising=False)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "m.py").write_text("def untagged():\n    return 1\n")
+    assert _verifier(tmp_path).verify_function_tag_coverage() is False  # default-on enforces
+    monkeypatch.setenv("STRICT_TRACEABILITY_FUNCTION_TAGS", "false")
+    assert _verifier(tmp_path).verify_function_tag_coverage() is True  # explicit opt-out
+
+
+def test_function_tag_gate_baseline_suppresses(tmp_path, monkeypatch):
+    #R060-T02: an enabled gate fails on an untagged function; a baseline entry suppresses it.
+    monkeypatch.setenv("STRICT_TRACEABILITY_FUNCTION_TAGS", "true")
+    monkeypatch.delenv("TRACEABILITY_FUNCTION_TAG_BASELINE", raising=False)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "m.py").write_text("def untagged():\n    return 1\n")
+    assert _verifier(tmp_path).verify_function_tag_coverage() is False
+    baseline = tmp_path / "config" / "traceability" / "function-tag-baseline.txt"
+    baseline.parent.mkdir(parents=True)
+    baseline.write_text("src/m.py:1: untagged\n")
+    assert _verifier(tmp_path).verify_function_tag_coverage() is True

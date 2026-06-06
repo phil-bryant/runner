@@ -7,6 +7,7 @@ from .discovery import (
     discover_test_files_for_requirements,
     extract_source_files_from_analogous_tree,
     extract_source_files_from_requirements_path,
+    list_function_tag_candidate_files,
     list_shell_test_roots,
     list_repository_software_files,
     list_requirements_files,
@@ -18,6 +19,7 @@ from .parsing import (
     extract_scoped_source_ids,
     extract_source_ids,
     extract_ui_required_ids,
+    find_untagged_functions,
     find_unscoped_numbered_test_tags,
     find_unscoped_source_tags,
     format_bulleted,
@@ -74,6 +76,8 @@ class TraceabilityVerifier:
                 failed += 1
             if not self.verify_repository_source_requirements_coverage():
                 failed += 1
+        if not self.verify_function_tag_coverage():
+            failed += 1
         print("")
         print(f"Summary: total={total} pass={passed} fail={failed}")
         if failed == 0:
@@ -478,6 +482,63 @@ class TraceabilityVerifier:
                 if repo_source.is_file() and runner_source.is_file() and self._files_identical(repo_source, runner_source):
                     covered.add(self._rel(repo_source))
         return covered
+
+    def verify_function_tag_coverage(self) -> bool:
+        #R060: Every parser-identifiable function must carry a scoped requirement
+        # tag (enforced by default). Reports each untagged function as
+        # `file:line: name`, honoring an optional baseline allowlist so a repo can
+        # fail only on newly-introduced untagged functions; set
+        # STRICT_TRACEABILITY_FUNCTION_TAGS=false to opt out.
+        import os
+
+        if os.environ.get("STRICT_TRACEABILITY_FUNCTION_TAGS", "true").lower() == "false":
+            print(
+                "ℹ️  Per-function tag coverage check disabled (STRICT_TRACEABILITY_FUNCTION_TAGS=false)."
+            )
+            return True
+
+        baseline = self._load_function_tag_baseline()
+        failures: list[str] = []
+        skipped_oversize = 0
+        for rel in list_function_tag_candidate_files(self.repo_root):
+            path = self.repo_root / rel
+            try:
+                if path.stat().st_size > 512_000:
+                    skipped_oversize += 1
+                    continue
+                untagged = find_untagged_functions(path)
+            except Exception:
+                continue
+            for name, line in untagged:
+                entry = f"{rel}:{line}: {name}"
+                if entry not in baseline:
+                    failures.append(entry)
+        if skipped_oversize:
+            print(f"ℹ️  Per-function tag coverage skipped {skipped_oversize} oversize file(s) (>512KB).")
+        if not failures:
+            print("✅ PASS: every analyzable function carries a requirement tag.")
+            return True
+        print(f"❌ FAIL (function-tag-coverage): {len(failures)} function(s) missing a requirement tag:")
+        print(format_bulleted(sorted(failures)))
+        return False
+
+    def _load_function_tag_baseline(self) -> set[str]:
+        import os
+
+        configured = os.environ.get(
+            "TRACEABILITY_FUNCTION_TAG_BASELINE", "config/traceability/function-tag-baseline.txt"
+        )
+        candidate = Path(configured)
+        if not candidate.is_absolute():
+            candidate = self.repo_root / candidate
+        if not candidate.is_file():
+            return set()
+        entries: set[str] = set()
+        for line in candidate.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                entries.add(stripped)
+        return entries
 
     def collect_ids_from_test_list(self, test_files: list[str]) -> set[str]:
         ids: set[str] = set()

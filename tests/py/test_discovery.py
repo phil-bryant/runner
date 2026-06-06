@@ -69,3 +69,22 @@ def test_engine_self_coverage_includes_engine():
     files = set(discovery.list_repository_software_files(repo_root))
     assert "tests/py/traceability/verification.py" in files
     assert "tests/t04_run_requirements_traceability_tests.sh" in files
+
+
+def test_function_tag_candidate_files_prunes_excluded_and_nested_repos(tmp_path):
+    #R030-T01: analyzable files are listed; excluded dirs and nested repos are pruned.
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "keep.py").write_text("def f():\n    return 1\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "keep.sh").write_text("g() { :; }\n")
+    venv = tmp_path / "proj-venv" / "lib"
+    venv.mkdir(parents=True)
+    (venv / "skip.py").write_text("z = 1\n")
+    nested = tmp_path / "subrepo"
+    (nested / ".git").mkdir(parents=True)
+    (nested / "inner.py").write_text("def h():\n    return 2\n")
+    files = discovery.list_function_tag_candidate_files(tmp_path)
+    assert "src/keep.py" in files
+    assert "tests/keep.sh" in files
+    assert not any(f.startswith("proj-venv/") for f in files)
+    assert not any(f.startswith("subrepo/") for f in files)

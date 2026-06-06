@@ -137,6 +137,59 @@ def test_extract_numbered_test_ids_swift_closure_braces(tmp_path):
     assert not misplaced
 
 
+def test_find_untagged_functions_reports_only_untagged(tmp_path):
+    #R040-T01: an untagged function is reported; ones tagged above or inside are not.
+    fixture = tmp_path / "m.py"
+    body = (
+        HASH + "R001: tagged on the leading comment\n"
+        "def alpha():\n    return 1\n"
+        "def beta():\n    " + HASH + "R002: tagged inside the body\n    return 2\n"
+        "def gamma():\n    return 3\n"
+    )
+    fixture.write_text(body)
+    names = [n for n, _ in parsing.find_untagged_functions(fixture)]
+    assert "gamma" in names
+    assert "alpha" not in names and "beta" not in names
+
+
+def test_find_untagged_functions_includes_private_nested_dunder(tmp_path):
+    #R040-T02: private, nested, and dunder functions are enumerated (not exempt).
+    fixture = tmp_path / "m.py"
+    body = (
+        "class C:\n"
+        "    def __init__(self):\n        pass\n"
+        "    def _helper(self):\n"
+        "        def inner():\n            return 1\n"
+        "        return inner\n"
+    )
+    fixture.write_text(body)
+    names = [n for n, _ in parsing.find_untagged_functions(fixture)]
+    assert "__init__" in names and "_helper" in names and "inner" in names
+
+
+def test_find_untagged_functions_unparseable_and_unsupported(tmp_path):
+    #R040-T03: a syntax-error Python file and an unsupported suffix yield no findings.
+    bad = tmp_path / "b.py"
+    bad.write_text("def broken(:\n    pass\n")
+    sql = tmp_path / "s.sql"
+    sql.write_text("select 1;\n")
+    assert parsing.find_untagged_functions(bad) == []
+    assert parsing.find_untagged_functions(sql) == []
+
+
+def test_find_untagged_functions_treesitter_languages(tmp_path):
+    #R040-T04: bash and swift functions are enumerated and untagged ones flagged.
+    pytest.importorskip("tree_sitter_language_pack")
+    sh = tmp_path / "x.sh"
+    sh.write_text("foo() {\n  echo hi\n}\n" + HASH + "R003: tag above bar\nbar() {\n  echo bye\n}\n")
+    sw = tmp_path / "x.swift"
+    sw.write_text('class X {\n  func a() {\n    let s = "}"\n  }\n}\n')
+    sh_names = [n for n, _ in parsing.find_untagged_functions(sh)]
+    sw_names = [n for n, _ in parsing.find_untagged_functions(sw)]
+    assert "foo" in sh_names and "bar" not in sh_names
+    assert "a" in sw_names
+
+
 def test_find_unscoped_source_tags():
     #R030-T01: a bare source tag is reported while a scoped one is not.
     text = HASH + "R001\n" + HASH + "R005: scoped ok\n"

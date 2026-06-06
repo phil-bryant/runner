@@ -511,5 +511,113 @@ def find_unscoped_numbered_test_tags(text: str) -> list[str]:
     return issues
 
 
+FUNCTION_TAG_PATTERN = re.compile(r"#R\d{3}(?:-\d{3})*(?:-T\d{2})?:\s*\S")
+
+# Map source suffix -> (tree-sitter language, function node kinds). Python is
+# handled separately via the stdlib ast. Languages with no enumerable function
+# concept here (e.g. .sql) are intentionally absent and yield "unsupported".
+_FUNCTION_TS_LANGS: dict[str, tuple[str, set[str]]] = {
+    ".sh": ("bash", {"function_definition"}),
+    ".bats": ("bash", {"function_definition"}),
+    ".swift": ("swift", {"function_declaration"}),
+    ".c": ("c", {"function_definition"}),
+    ".h": ("c", {"function_definition"}),
+    ".cc": ("cpp", {"function_definition"}),
+    ".cpp": ("cpp", {"function_definition"}),
+    ".cxx": ("cpp", {"function_definition"}),
+    ".hpp": ("cpp", {"function_definition"}),
+    ".m": ("cpp", {"function_definition"}),
+    ".mm": ("cpp", {"function_definition"}),
+}
+
+_FUNCTION_NAME_RE = re.compile(r"(?:func|function)?\s*([A-Za-z_][A-Za-z0-9_]*)\s*[\(\{]")
+
+
+def _python_function_spans(text: str) -> list[tuple[str, int, int]] | None:
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return None
+    spans: list[tuple[str, int, int]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            end = getattr(node, "end_lineno", None) or node.lineno
+            spans.append((node.name, node.lineno, end))
+    return spans
+
+
+def iter_function_spans(suffix: str, text: str) -> list[tuple[str, int, int]] | None:
+    """Return ``(name, start_line, end_line)`` for every function in ``text``.
+
+    Python uses the stdlib ``ast`` (all ``def``/``async def`` incl. nested,
+    dunder and private); bash/bats/swift/c/cpp use tree-sitter. Returns ``None``
+    for unsupported languages or when the source cannot be parsed.
+    """
+    suffix = suffix.lower()
+    if suffix == ".py":
+        return _python_function_spans(text)
+    lang = _FUNCTION_TS_LANGS.get(suffix)
+    if lang is None:
+        return None
+    language_name, node_kinds = lang
+    parse_text = _bats_to_bash(text) if suffix == ".bats" else text
+    ranges = _treesitter_block_ranges(language_name, parse_text, node_kinds)
+    if ranges is None:
+        return None
+    lines = text.splitlines()
+    spans: list[tuple[str, int, int]] = []
+    for start, end in ranges:
+        name = "<anonymous>"
+        if 1 <= start <= len(lines):
+            match = _FUNCTION_NAME_RE.search(lines[start - 1])
+            if match:
+                name = match.group(1)
+        spans.append((name, start, end))
+    return spans
+
+
+def _leading_comment_start(lines: list[str], start_line: int) -> int:
+    """First line of the contiguous comment/decorator/blank block above a def.
+
+    Matches the codebase convention of putting a ``#Rxxx:`` tag on the comment
+    line(s) immediately above the function rather than inside its body.
+    """
+    first = start_line
+    cursor = start_line - 1
+    while cursor >= 1:
+        stripped = lines[cursor - 1].strip()
+        if stripped == "" or stripped.startswith(("#", "@", "//", "/*", "*")):
+            first = cursor
+            cursor -= 1
+        else:
+            break
+    return first
+
+
+def function_is_tagged(lines: list[str], start_line: int, end_line: int) -> bool:
+    lead = _leading_comment_start(lines, start_line)
+    upper = min(end_line, len(lines))
+    for line_number in range(lead, upper + 1):
+        if FUNCTION_TAG_PATTERN.search(lines[line_number - 1]):
+            return True
+    return False
+
+
+#R040: Detect functions that carry no scoped requirement tag (in their leading
+# comment block or body), enumerating every function via ast/tree-sitter so the
+# per-function tag-coverage gate can flag untagged functions; unsupported or
+# unparseable files yield no findings.
+def find_untagged_functions(path: Path, text: str | None = None) -> list[tuple[str, int]]:
+    if text is None:
+        if not path.is_file():
+            return []
+        text = path.read_text(encoding="utf-8")
+    spans = iter_function_spans(path.suffix, text)
+    if not spans:
+        return []
+    lines = text.splitlines()
+    return [(name, start) for (name, start, end) in spans if not function_is_tagged(lines, start, end)]
+
+
 def format_bulleted(items: Iterable[str], prefix: str = "  - ") -> str:
     return "\n".join(f"{prefix}{item}" for item in items)

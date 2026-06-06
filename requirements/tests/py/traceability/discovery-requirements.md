@@ -36,6 +36,12 @@ Design: `list_traceability_engine_files` force-includes `tests/py/traceability/*
 Tests:
 - R025-T01: Verify the engine modules and wrapper are present in the software universe.
 
+R030  Statement: Per-function tag-coverage candidate files are enumerable.
+Design: `list_function_tag_candidate_files` walks the repo for analyzable source and test extensions, pruning vendored/build/venv dirs and any nested git repository so an umbrella workspace does not sweep its subrepos.
+Tests:
+- R030-T01: Verify analyzable files are listed while an excluded dir and a nested git repo are pruned.
+
 ## Changelog
 
+- 2026-06-06: Added R030 (candidate-file enumeration) for the opt-in per-function tag-coverage gate.
 - 2026-06-06: Created with the self-coverage rule (R025) so the engine no longer silently excludes itself from coverage.

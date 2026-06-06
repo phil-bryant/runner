@@ -68,7 +68,14 @@ Design: `verify_repository_source_requirements_coverage` builds the coverage uni
 Tests:
 - R055-T01: Verify the wrapper and engine modules (including verification.py) are in the coverage universe with no exclusion argument.
 
+R060  Statement: The per-function requirement-tag gate is enforced by default.
+Design: `verify_function_tag_coverage` reports every analyzable function lacking a scoped requirement tag as `file:line: name`. It is enforced by default (`STRICT_TRACEABILITY_FUNCTION_TAGS` defaults to on; set it to `false` to opt out) and honors an optional baseline allowlist (`_load_function_tag_baseline`) so a repo can fail only on newly-introduced untagged functions.
+Tests:
+- R060-T01: Verify the gate enforces by default (unset env) and is disabled only by an explicit `false`.
+- R060-T02: Verify an enabled gate fails listing an untagged function, and a baseline entry suppresses its listing.
+
 ## Changelog
+- 2026-06-06: Added R060 (opt-in per-function tag-coverage gate with baseline ratchet).
 - 2026-06-06: Removed the exclude-source env knob and the `verification.py` self-exclusion (R055); engine self-coverage is now unconditional (anti-cheat: no self-exemption).
 
 - 2026-06-06: Created. R040/R045 add unconditional, non-disablable mandatory tag-text enforcement (anti-cheat: no env opt-out).

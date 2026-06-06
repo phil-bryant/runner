@@ -51,6 +51,15 @@ Design: `find_unscoped_numbered_test_tags` returns line diagnostics for `#Rxxx-T
 Tests:
 - R035-T01: Verify a bare `#Rxxx-Tnn` is reported while `#Rxxx-Tnn: text` is not.
 
+R040  Statement: Functions lacking a scoped requirement tag are detectable.
+Design: `find_untagged_functions` enumerates every function (Python via `ast`; bash/bats/swift/c/cpp via tree-sitter through `iter_function_spans`) and reports those with no scoped `#Rxxx`/`#Rxxx-Tnn` tag in their leading comment block or body (`function_is_tagged`); unsupported or unparseable files yield no findings.
+Tests:
+- R040-T01: Verify an untagged function is reported while ones tagged above or inside the body are not.
+- R040-T02: Verify private, nested, and dunder functions are enumerated (not exempt).
+- R040-T03: Verify a syntax-error Python file and an unsupported suffix yield no findings.
+- R040-T04: Verify tree-sitter languages (bash/swift) enumerate functions and flag untagged ones.
+
 ## Changelog
 
+- 2026-06-06: Added R040 (per-function tag detection primitive) backing the opt-in function-tag-coverage gate.
 - 2026-06-06: Created; added the strict tag-text detectors (R030/R035) backing the unconditional mandatory-text enforcement.

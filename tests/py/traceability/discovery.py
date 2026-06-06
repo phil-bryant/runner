@@ -252,3 +252,73 @@ def list_repository_software_files(repo_root: Path) -> list[str]:
     for engine_rel in list_traceability_engine_files(repo_root):
         files.add(engine_rel)
     return sorted(files)
+
+
+FUNCTION_TAG_CANDIDATE_EXTS = {
+    ".py",
+    ".sh",
+    ".bats",
+    ".swift",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".cxx",
+    ".h",
+    ".hpp",
+    ".m",
+    ".mm",
+}
+
+_FUNCTION_TAG_EXCLUDED_DIRS = {
+    ".git",
+    ".cursor",
+    "artifacts",
+    "backups",
+    "node_modules",
+    "Pods",
+    ".build",
+    ".swiftpm",
+    "site-packages",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".tox",
+    ".gradle",
+    "__pycache__",
+    "vendor",
+    "third_party",
+}
+
+
+def _is_function_tag_excluded_dir(name: str) -> bool:
+    return (
+        name in _FUNCTION_TAG_EXCLUDED_DIRS
+        or name.endswith("-venv")
+        or name.startswith(".derivedData")
+        or name.endswith(".egg-info")
+    )
+
+
+#R030: Enumerate analyzable source+test files for the per-function tag-coverage
+# gate. Unlike the coverage universe this includes test trees and applies no
+# macos-ui/teller scope exclusions, but prunes vendored/build/venv dirs and any
+# nested git repository (so an umbrella workspace does not sweep its subrepos).
+def list_function_tag_candidate_files(repo_root: Path) -> list[str]:
+    repo_root = repo_root.resolve()
+    files: set[str] = set()
+    for root, dirs, filenames in os.walk(repo_root):
+        root_path = Path(root)
+        kept = []
+        for d in dirs:
+            if _is_function_tag_excluded_dir(d):
+                continue
+            # Prune any nested git repository (e.g. an umbrella workspace's
+            # subrepos) so the gate covers only this repo's own functions.
+            if (root_path / d / ".git").exists():
+                continue
+            kept.append(d)
+        dirs[:] = kept
+        for filename in filenames:
+            path = root_path / filename
+            if path.suffix.lower() in FUNCTION_TAG_CANDIDATE_EXTS:
+                files.add(path.relative_to(repo_root).as_posix())
+    return sorted(files)
