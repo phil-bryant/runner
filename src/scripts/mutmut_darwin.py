@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import tomllib
+import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -41,22 +42,43 @@ def _repo_root() -> Path:
     return root
 
 
+def _generate_mutants_serial(*, walk_source_files, create_file_mutants, MutantGenerationStats):
+    # Serial, in-process equivalent of mutmut.create_mutants() with no multiprocessing.Pool.
+    # See _prepare for why the fork-based pool is avoided on macOS.
+    stats = MutantGenerationStats()
+    for path in walk_source_files():
+        result = create_file_mutants(path)
+        for warning in result.warnings:
+            warnings.warn(warning)
+        if result.error:
+            raise result.error
+        if result.unmodified:
+            stats.unmodified += 1
+        elif result.ignored:
+            stats.ignored += 1
+        else:
+            stats.mutated += 1
+    return stats
+
+
 def _prepare(root: Path, max_children: int) -> int:
     os.chdir(root)
     os.environ["MUTANT_UNDER_TEST"] = "mutant_generation"
     from mutmut.__main__ import (
         CatchOutput,
+        MutantGenerationStats,
         PytestRunner,
         collect_or_load_stats,
         copy_also_copy_files,
         copy_src_dir,
-        create_mutants,
+        create_file_mutants,
         ensure_config_loaded,
         makedirs,
         run_forced_fail_test,
         setup_source_paths,
         store_lines_covered_by_tests,
         tests_for_mutant_names,
+        walk_source_files,
     )
     from pathlib import Path as PPath
 
@@ -71,7 +93,17 @@ def _prepare(root: Path, max_children: int) -> int:
         # and avoids loading unrelated plugins/fixtures during mutant execution).
         setup_source_paths()
         store_lines_covered_by_tests()
-        stats = create_mutants(max_children)
+        # Generate mutants serially in-process. mutmut's create_mutants() spins up a
+        # multiprocessing.Pool under its module-forced set_start_method('fork'); on macOS
+        # that no-exec fork inherits the parent's fork-hostile native state (sqlalchemy,
+        # ctypes/libonepsa, requests loaded by store_lines_covered_by_tests) and SIGSEGVs.
+        # This loop replicates create_mutants() exactly, minus the Pool, so prepare never
+        # forks. t07 always prepares with --max-children 1, so no parallelism is lost.
+        stats = _generate_mutants_serial(
+            walk_source_files=walk_source_files,
+            create_file_mutants=create_file_mutants,
+            MutantGenerationStats=MutantGenerationStats,
+        )
         sys.path[:] = path_before_pool
         _purge_pycache_under(PPath("mutants"))
         setup_source_paths()

@@ -197,6 +197,9 @@ MUTMUT_OUTPUT="$(mktemp)"
 set +e
 export PATH="${REPO_ROOT}/${VENV_NAME}/bin:${PATH}"
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+# Secondary macOS fork-safety hardening: avoid the nano malloc zone, which is a known
+# crash source across fork() on Darwin.
+export MallocNanoZone=0
 export HYPOTHESIS_SEED="${MUTATION_HYPOTHESIS_SEED}"
 if [ "$MUTATION_USE_SUBPROCESS" = "true" ]; then
   run_with_timeout "$MUTATION_TIMEOUT_SECONDS" \
@@ -208,12 +211,14 @@ if [ "$MUTATION_USE_SUBPROCESS" = "true" ]; then
       "$PYTHON_BIN" "$MUTMUT_DARWIN_DRIVER" execute >> "$MUTMUT_OUTPUT" 2>&1
     MUTMUT_EXIT=$?
   else
-    echo "⚠️  mutmut Darwin subprocess driver failed to prepare; falling back to direct mutmut run." >> "$MUTMUT_OUTPUT"
-    export PYTHONSTARTUP="${MUTMUT_DARWIN_STUB}"
-    run_with_timeout "$MUTATION_TIMEOUT_SECONDS" \
-      "$PYTHON_BIN" -m mutmut run --max-children 1 >> "$MUTMUT_OUTPUT" 2>&1
-    MUTMUT_EXIT=$?
-    unset PYTHONSTARTUP
+    # Darwin subprocess-driver prepare failed. NEVER fall back to the native forking
+    # `mutmut run` engine here: its per-mutant os.fork() (no exec) SIGSEGVs en masse on
+    # macOS once fork-hostile native libs are loaded, flooding the OS with ~1500
+    # "Python quit unexpectedly" crash popups. Surface the real prepare error and route
+    # through the clean SKIP/FAIL path below by propagating the prepare exit code.
+    echo "⚠️  mutmut Darwin subprocess driver failed to prepare (exit ${PREPARE_EXIT}); skipping mutation run (no native fork fallback)." >> "$MUTMUT_OUTPUT"
+    cat "$MUTMUT_OUTPUT"
+    MUTMUT_EXIT=$PREPARE_EXIT
   fi
 else
   export PYTHONSTARTUP="${MUTMUT_DARWIN_STUB}"
