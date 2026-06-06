@@ -1,4 +1,5 @@
 """Unit tests for the traceability engine discovery helpers."""
+import ast
 from pathlib import Path
 
 from traceability import discovery
@@ -54,14 +55,18 @@ def test_discover_shell_companion(tmp_path, monkeypatch):
 
 
 def test_repo_software_files_excludes_and_includes(tmp_path):
-    #R020-T01: a normal source is included while an excluded tree is omitted.
+    #R020-T01: normal sources are included, excluded trees and nested repos are omitted.
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "keep.py").write_text("x = 1\n")
     (tmp_path / "node_modules").mkdir()
     (tmp_path / "node_modules" / "skip.py").write_text("y = 2\n")
+    nested = tmp_path / "subrepo"
+    (nested / ".git").mkdir(parents=True)
+    (nested / "inner.py").write_text("z = 3\n")
     files = discovery.list_repository_software_files(tmp_path)
     assert "src/keep.py" in files
     assert "node_modules/skip.py" not in files
+    assert "subrepo/inner.py" not in files
 
 
 def test_engine_self_coverage_includes_engine():
@@ -89,10 +94,6 @@ def test_function_tag_candidate_files_prunes_excluded_and_nested_repos(tmp_path)
     assert "tests/keep.sh" in files
     assert not any(f.startswith("proj-venv/") for f in files)
     assert not any(f.startswith("subrepo/") for f in files)
-
-
-import ast
-
 
 #R065: shard-3 function tag
 def _extract_traceability_env_knobs_from_source(source_text: str) -> set[str]:

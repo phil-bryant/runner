@@ -47,6 +47,7 @@ if [[ ! -x "$DB_PROFILE_HELPER" ]]; then
   echo "❌ DB profile helper is missing or not executable: ${DB_PROFILE_HELPER}"
   exit 1
 fi
+#R001: function tag for load_profile_exports_from_file
 load_profile_exports_from_file() {
   local exports_file="$1"
   local invalid_lines=""
@@ -102,12 +103,14 @@ if [[ -z "$SQL_TESTS_DIR" ]]; then
   fi
 fi
 
+#R001: function tag for python_interpreter_usable
 python_interpreter_usable() {
   local candidate="$1"
   [[ -x "$candidate" ]] || return 1
   "$candidate" -c "import site" >/dev/null 2>&1
 }
 
+#R001: function tag for resolve_bats_jobs
 resolve_bats_jobs() {
   local default_jobs cap
   default_jobs="$(sysctl -n hw.ncpu 2>/dev/null || echo 8)"
@@ -124,6 +127,7 @@ resolve_bats_jobs() {
   fi
 }
 
+#R001: function tag for run_single_bats_file
 run_single_bats_file() {
   local bats_file="$1"
   local -a bats_env_unsets=(
@@ -156,6 +160,7 @@ run_single_bats_file() {
   fi
 }
 
+#R001: function tag for collect_bats_files
 collect_bats_files() {
   local roots_spec normalized root candidate
   local seen=$'\n'
@@ -181,6 +186,7 @@ collect_bats_files() {
   done
 }
 
+#R001: function tag for swiftpm_state_looks_stale
 swiftpm_state_looks_stale() {
   local output_text="$1"
   [[ "$output_text" == *"cannot be accessed"* && "$output_text" == *".build/"* ]] && return 0
@@ -189,6 +195,7 @@ swiftpm_state_looks_stale() {
   return 1
 }
 
+#R001: function tag for clear_conflicting_swiftpm_build_dirs
 clear_conflicting_swiftpm_build_dirs() {
   local output_text="$1"
   local cache_roots=""
@@ -458,6 +465,7 @@ if [[ "$RUN_SWIFT_TESTS" == "true" ]]; then
     fi
     # shellcheck disable=SC1090
     source "$MACOS_UI_SWIFT_LOCK_HELPER"
+    #R001: function tag for run_swift_tests_with_lock
     run_swift_tests_with_lock() {
       macos_ui_with_swiftpm_lock "$MACOS_UI_SWIFTPM_LOCK" "$MACOS_UI_SWIFT_LOCK_TIMEOUT_SECONDS" "run_unit_test_lanes:swift-test" \
         swift test --package-path ./src/macos-ui 2>&1

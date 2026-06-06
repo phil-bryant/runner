@@ -126,6 +126,80 @@ def _parse_swift_xctest_total(log_text: str) -> int | None:
     return max(run_totals)
 
 
+#R022: SQL-unit lane count prefers pg_prove `Tests=N` summaries, then TAP plans.
+def _parse_sql_unit_total(log_text: str) -> int | None:
+    #R022: Parse SQL-unit totals from pg_prove summary or TAP output.
+    summary_totals = [
+        int(match.group(1))
+        for match in re.finditer(r"(?im)\bTests\s*=\s*(\d+)\b", log_text)
+    ]
+    if summary_totals:
+        return max(summary_totals)
+
+    plan_totals = [
+        int(value) for value in re.findall(r"(?m)^\s*1\.\.(\d+)\s*$", log_text)
+    ]
+    if plan_totals:
+        return sum(plan_totals)
+
+    ok_totals = len(re.findall(r"(?m)^\s*ok\s+\d+\b", log_text))
+    if ok_totals > 0:
+        return ok_totals
+    return None
+
+
+#R001: function tag for _parse_cpp_integration_total
+def _parse_cpp_integration_total(log_text: str) -> int | None:
+    # Parse C++ integration totals from common ctest/gtest/catch2 summaries.
+    mailcart_final_count = re.search(
+        r"(?im)\bFinal count:\s*tests\s+(\d+)/\d+\s+passed\b",
+        log_text,
+    )
+    if mailcart_final_count is not None:
+        return int(mailcart_final_count.group(1))
+
+    ctest_summary = re.search(
+        r"(?im)\btests passed,\s+\d+\s+tests failed out of\s+(\d+)\b",
+        log_text,
+    )
+    if ctest_summary is not None:
+        return int(ctest_summary.group(1))
+
+    total_tests = re.search(r"(?im)\bTotal Tests:\s*(\d+)\b", log_text)
+    if total_tests is not None:
+        return int(total_tests.group(1))
+
+    gtest_totals = [
+        int(match.group(1))
+        for match in re.finditer(
+            r"(?im)^\s*\[=+\]\s*Running\s+(\d+)\s+tests?\s+from\s+\d+\s+test suites?\.",
+            log_text,
+        )
+    ]
+    if gtest_totals:
+        return max(gtest_totals)
+
+    catch2_totals = [
+        int(match.group(1))
+        for match in re.finditer(
+            r"(?im)\bAll tests passed\s+\(\d+\s+assertions?\s+in\s+(\d+)\s+test cases?\)",
+            log_text,
+        )
+    ]
+    if catch2_totals:
+        return max(catch2_totals)
+
+    discovered_cases = len(re.findall(r"(?im)^\s*(?:\d+/\d+\s+)?Test\s+#\d+:", log_text))
+    if discovered_cases > 0:
+        return discovered_cases
+
+    mailcart_named_tests = len(re.findall(r"(?im)^\s*Running\s+Test[^\s]+\s*$", log_text))
+    if mailcart_named_tests > 0:
+        return mailcart_named_tests
+
+    return None
+
+
 def _parse_numeric_selector_count(selector: str) -> int | None:
     #R018: Parse numeric selector syntax into unique scenario counts.
     selector = selector.strip()
@@ -198,6 +272,7 @@ def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int
     #R001: Resolve traceability lane total from Summary output.
     #R005: Resolve shell-unit totals from bats TAP plans/results.
     #R010: Resolve python-unit totals from pytest summary output.
+    #R022: Resolve sql-unit totals from pg_prove/TAP summary output.
     #R012: Resolve swift-unit totals from XCTest summary output.
     #R015: Resolve artifact-summary lane totals from JSON fields.
     #R018: Resolve macOS UI totals from scenario summaries/selectors.
@@ -207,28 +282,34 @@ def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int
     lane_stem = Path(lane_script).stem
     log_text = _read_text(lane_log)
 
-    if lane_stem == "t04_run_requirements_traceability_tests":
+    if lane_stem.endswith("run_requirements_traceability_tests"):
         return _parse_traceability_total(log_text)
 
-    if lane_stem == "t05_run_shell_unit_tests":
+    if lane_stem.endswith("run_shell_unit_tests"):
         return _parse_bats_total(log_text)
 
-    if lane_stem == "t06_run_python_unit_tests":
+    if lane_stem.endswith("run_python_unit_tests"):
         return _parse_pytest_total(log_text)
 
-    if lane_stem == "t08_run_swift_unit_tests":
+    if lane_stem.endswith("run_sql_unit_tests"):
+        return _parse_sql_unit_total(log_text)
+
+    if lane_stem.endswith("run_swift_unit_tests"):
         return _parse_swift_xctest_total(log_text)
 
     if lane_stem.endswith("run_macos_ui_regression_tests"):
         return _parse_macos_ui_regression_total(log_text, repo_root)
 
-    if lane_stem == "t08_run_fuzz_tests":
+    if lane_stem.endswith("run_cpp_integration_tests"):
+        return _parse_cpp_integration_total(log_text)
+
+    if lane_stem.endswith("run_fuzz_tests"):
         return _read_int_field(repo_root / "artifacts/fuzz/fuzz-summary.json", "property_test_count")
 
-    if lane_stem == "t07_run_mutation_tests":
+    if lane_stem.endswith("run_mutation_tests"):
         return _read_int_field(repo_root / "artifacts/mutation/mutation-summary.json", "total")
 
-    if lane_stem == "t00_run_code_quality_tests":
+    if lane_stem.endswith("run_code_quality_tests"):
         quality_dir = repo_root / "artifacts/quality/reports"
         quality_checks = _count_non_skipped_text_reports(
             quality_dir,
@@ -236,7 +317,7 @@ def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int
         )
         return quality_checks if quality_checks > 0 else None
 
-    if lane_stem == "t02_run_dependency_freshness_tests":
+    if lane_stem.endswith("run_dependency_freshness_tests"):
         security_dir = repo_root / "artifacts/security"
         dependency_checks = _count_existing(
             security_dir,
@@ -250,7 +331,7 @@ def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int
         )
         return dependency_checks if dependency_checks > 0 else None
 
-    if lane_stem == "t03_run_static_security_tests":
+    if lane_stem.endswith("run_static_security_tests"):
         static_default_dir = repo_root / "artifacts/security/reports"
         static_report_dir = _extract_reports_dir_from_log(log_text, repo_root, static_default_dir)
         static_checks = _count_existing(
@@ -268,7 +349,7 @@ def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int
         )
         return static_checks if static_checks > 0 else None
 
-    if lane_stem == "t09_run_dynamic_security_tests":
+    if lane_stem.endswith("run_dynamic_security_tests"):
         dynamic_default_dir = repo_root / "artifacts/security-dast"
         dynamic_report_dir = _extract_reports_dir_from_log(log_text, repo_root, dynamic_default_dir)
         dynamic_checks = 0

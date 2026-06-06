@@ -43,6 +43,7 @@ WRITE_TOKEN_HEADER_NAME="${WRITE_TOKEN_HEADER_NAME:-X-Teller-Write-Token}"
 
 mkdir -p "$REPORT_DIR"
 
+#R005: function tag for python_interpreter_usable
 python_interpreter_usable() {
   local candidate="$1"
   [[ -x "$candidate" ]] || return 1
@@ -59,6 +60,7 @@ if [[ -d "./${VENV_NAME}" ]] && [[ -f "./${VENV_NAME}/bin/activate" ]]; then
   fi
 fi
 
+#R005: function tag for require_command
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "❌ Missing required command: $1"
@@ -67,6 +69,7 @@ require_command() {
   fi
 }
 
+#R005: function tag for require_file
 require_file() {
   if [[ ! -f "$1" ]]; then
     echo "❌ Missing required file: $1"
@@ -74,6 +77,7 @@ require_file() {
   fi
 }
 
+#R005: function tag for print_tool_header
 print_tool_header() {
   # Delimit each security tool execution with a boxed descriptor header.
   local tool_name="$1"
@@ -134,6 +138,7 @@ ensure_security_venv() {
   local security_semgrep="${SECURITY_VENV_DIR}/bin/semgrep"
   local security_schemathesis="${SECURITY_VENV_DIR}/bin/schemathesis"
 
+  #R005: function tag for security_console_script_usable
   security_console_script_usable() {
     local script_path="$1"
     local probe_arg="${2:---version}"
@@ -167,10 +172,12 @@ ensure_security_venv() {
   fi
 }
 
+#R005: function tag for security_toolchain_usable
 security_toolchain_usable() {
   python_interpreter_usable "${SECURITY_VENV_DIR}/bin/python"
 }
 
+#R005: function tag for wait_for_http
 wait_for_http() {
   local url="$1"
   local timeout_seconds="${2:-30}"
@@ -198,6 +205,7 @@ wait_for_http() {
   done
 }
 
+#R005: function tag for wait_for_http_non_5xx
 wait_for_http_non_5xx() {
   local url="$1"
   local timeout_seconds="${2:-60}"
@@ -227,6 +235,7 @@ wait_for_http_non_5xx() {
   done
 }
 
+#R005: function tag for is_tcp_port_in_use
 is_tcp_port_in_use() {
   # Detect occupied localhost ports before binding DAST API or ZAP quick-scan proxy.
   local host="$1"
@@ -247,6 +256,7 @@ finally:
 PY
 }
 
+#R005: function tag for find_available_tcp_port
 find_available_tcp_port() {
   # Auto-select the next free localhost port when the requested port is in use.
   local host="$1"
@@ -275,6 +285,7 @@ raise SystemExit(1)
 PY
 }
 
+#R005: function tag for resolve_first_existing_file
 resolve_first_existing_file() {
   local candidate=""
   for candidate in "$@"; do
@@ -287,6 +298,7 @@ resolve_first_existing_file() {
   return 1
 }
 
+#R005: function tag for run_zap_quick_scan
 run_zap_quick_scan() {
   local zap_cli_cmd="$1"
   local zap_home_dir="$2"
@@ -341,12 +353,14 @@ run_zap_quick_scan() {
   fi
 }
 
+#R005: function tag for summarize_zap_html_report
 summarize_zap_html_report() {
   local html_report="$1"
   local summary_json="$2"
   python3 "${SECURITY_PY_DIR}/zap_summary_parser.py" "$html_report" "$summary_json"
 }
 
+#R005: function tag for read_classifier_write_token
 read_classifier_write_token() {
   # Resolve DAST write token from env when present, else 1psa. Apps without write-token auth
   # (DAST_REQUIRE_WRITE_TOKEN=false) use a benign placeholder header instead of requiring a secret.
@@ -370,6 +384,7 @@ read_classifier_write_token() {
   printf '%s' "$write_token"
 }
 
+#R005: function tag for run_swift_sast
 run_swift_sast() {
   local swift_report="$1"
   local swift_ui_dir="${SWIFT_UI_DIR:-./src/macos-ui}"
@@ -426,6 +441,7 @@ run_swift_sast() {
   fi
 }
 
+#R005: function tag for run_shellcheck_sast
 run_shellcheck_sast() {
   # Run ShellCheck against shell scripts and persist machine-readable findings.
   local shellcheck_report="$1"
@@ -461,6 +477,7 @@ run_shellcheck_sast() {
   fi
 }
 
+#R005: function tag for run_gitleaks_sast
 run_gitleaks_sast() {
   # Run gitleaks and preserve JSON findings for centralized secret-leak gating.
   local gitleaks_report="$1"
@@ -498,6 +515,7 @@ run_dast_checks() {
 (
   set -euo pipefail
 
+  #R005: function tag for run_category_integrity_checks
   run_category_integrity_checks() {
     local report_dir_abs="$1"
     local integrity_report_path="${report_dir_abs}/category-integrity.json"
@@ -515,6 +533,7 @@ run_dast_checks() {
     fi
   }
 
+  #R005: function tag for prepare_schemathesis_openapi_fixture
   prepare_schemathesis_openapi_fixture() {
     local source_openapi_url="$1"
     local source_base_url="$2"
@@ -526,6 +545,7 @@ run_dast_checks() {
     python3 "${SECURITY_PY_DIR}/schemathesis_fixture_prep.py"       "$source_openapi_url"       "$source_base_url"       "$output_schema_path"       "$write_token"       "$write_token_header_name"       "$matchy_seed_path"       "$dast_run_id"
   }
 
+  #R005: function tag for seed_matchy_data_for_schemathesis
   seed_matchy_data_for_schemathesis() {
     local output_json_path="$1"
     local dast_run_id="${2:-unknown}"
@@ -806,6 +826,7 @@ PY
     return "$seed_exit"
   }
 
+  #R005: function tag for run_delete_category_contract_check
   run_delete_category_contract_check() {
     local schema_path="$1"
     local source_base_url="$2"
@@ -985,6 +1006,7 @@ PY
     echo "ℹ️  DAST baseline + cleanup skipped because DAST_SKIP_CLEANUP=true"
   fi
 
+  #R005: function tag for _cleanup_dast_state
   _cleanup_dast_state() {
     local exit_code=$?
     if [[ -n "${token_capture_pid:-}" ]] && kill -0 "${token_capture_pid}" >/dev/null 2>&1; then

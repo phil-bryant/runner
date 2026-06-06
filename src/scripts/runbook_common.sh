@@ -44,8 +44,11 @@ runbook_cd_repo() {
 
 #R020: Status helpers keep output uniform across goldens.
 rb_info() { echo "$*"; }
+#R001: function tag for rb_ok
 rb_ok() { echo "✅ $*"; }
+#R001: function tag for rb_warn
 rb_warn() { echo "⚠️  $*"; }
+#R001: function tag for rb_err
 rb_err() { echo "❌ $*" >&2; }
 
 #R025: Ensure a Homebrew formula is present; install it when missing.
@@ -112,6 +115,7 @@ rb_env_fallback_file_path() {
   printf '%s' "$dotenv_path"
 }
 
+#R001: function tag for rb_normalize_env_item_name
 rb_normalize_env_item_name() {
   local raw="$1"
   local normalized
@@ -119,6 +123,7 @@ rb_normalize_env_item_name() {
   printf '%s' "$normalized"
 }
 
+#R001: function tag for rb_onepsa_env_lookup_keys
 rb_onepsa_env_lookup_keys() {
   local item="$1"
   local field="${2:-password}"
@@ -148,6 +153,7 @@ rb_onepsa_env_lookup_keys() {
   done
 }
 
+#R001: function tag for rb_onepsa_env_lookup_keys_csv
 rb_onepsa_env_lookup_keys_csv() {
   local item="$1"
   local field="${2:-password}"
@@ -163,6 +169,7 @@ rb_onepsa_env_lookup_keys_csv() {
   printf '%s' "$joined"
 }
 
+#R001: function tag for rb_lookup_dotenv_key
 rb_lookup_dotenv_key() {
   local key="$1"
   local dotenv_path
@@ -214,6 +221,7 @@ PY
   return 1
 }
 
+#R001: function tag for rb_lookup_env_fallback
 rb_lookup_env_fallback() {
   local item="$1"
   local field="${2:-password}"

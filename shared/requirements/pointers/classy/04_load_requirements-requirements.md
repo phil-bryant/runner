@@ -1,8 +1,8 @@
-# 03 Load Requirements Wrapper Requirements
+# 04 Load Requirements Wrapper Requirements
 
 ## Scope
 
-Applies to `03_load_requirements.sh`.
+Applies to `04_load_requirements.sh`.
 
 R001  Statement: Pointer runs with secure umask and strict shell mode via the shared shim.
 Design: Source `src/scripts/pointer_shim.sh`, which sets `umask 007` and `set -euo pipefail` before delegation.

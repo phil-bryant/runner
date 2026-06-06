@@ -27,7 +27,6 @@ class DastCleanupTests(unittest.TestCase):
 
     def test_single_transaction_restore_delete_sequence(self):
         #R030-T01: Verify a single transaction executes restore/delete sequence and records expected count fields.
-        engine = object()
         with patch.object(self.module, "_restore_matches", return_value=2):
             with patch.object(self.module, "_delete_post_baseline_audits", return_value=3):
                 with patch.object(self.module, "_delete_post_baseline_matches", return_value=4):

@@ -287,10 +287,12 @@ def test_ts_adapters_normalize_method_and_property_nodes():
         children = []
 
         @staticmethod
+        #R001-T01: function tag for kind
         def kind():
             return "function_definition"
 
         @staticmethod
+        #R001-T01: function tag for start_position
         def start_position():
             return Point()
 

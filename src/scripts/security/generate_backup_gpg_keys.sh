@@ -61,6 +61,7 @@ mkdir -p "$OUTPUT_DIR"
 chmod 700 "$OUTPUT_DIR"
 
 TEMP_GNUPGHOME="$(mktemp -d)"
+#R001: function tag for cleanup
 cleanup() {
   rm -rf "$TEMP_GNUPGHOME"
 }

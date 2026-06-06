@@ -273,7 +273,10 @@ class CheckBinaryIntegrityTests(unittest.TestCase):
             payload = tmp_path / "payload.bin"
             payload.write_bytes(b"eggnest-binary-integrity")
             digest = self.module.sha256_file(str(payload))
-        self.assertEqual(digest, "8b35c3e0ffe8cd1db3b4ab172194090c3399cd7370da5bb87e2cc51ce5d320b8")
+        self.assertEqual(
+            digest,
+            "8b35c3e0ffe8cd1db3b4ab172194090c3399cd7370da5bb87e2cc51ce5d320b8",  # pragma: allowlist secret
+        )
 
     def test_cli_gate_fails_on_policy_violation(self) -> None:
         #R050-T01: Verify CLI gate mode returns non-zero and writes report artifacts when policy violations are present (`tests/py/test_check_binary_integrity.py`).

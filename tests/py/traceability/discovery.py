@@ -30,9 +30,9 @@ def list_traceability_engine_files(repo_root: Path) -> list[str]:
                 continue
             if path.is_file():
                 files.add(path.relative_to(repo_root).as_posix())
-    wrapper = repo_root / TRACEABILITY_ENGINE_WRAPPER
-    if wrapper.is_file():
-        files.add(wrapper.relative_to(repo_root).as_posix())
+        wrapper = repo_root / TRACEABILITY_ENGINE_WRAPPER
+        if wrapper.is_file():
+            files.add(wrapper.relative_to(repo_root).as_posix())
     return sorted(files)
 
 
@@ -214,6 +214,7 @@ def discover_test_files_for_requirements(
 #R020: Enumerate repository software files for coverage, applying directory and
 # path exclusions (vendored/generated/test trees, etc.).
 def list_repository_software_files(repo_root: Path) -> list[str]:
+    repo_root = repo_root.resolve()
     excluded_dirs = {
         ".git",
         ".cursor",
@@ -245,9 +246,20 @@ def list_repository_software_files(repo_root: Path) -> list[str]:
 
     files: set[str] = set()
     for root, dirs, filenames in os.walk(repo_root):
-        dirs[:] = [d for d in dirs if d not in excluded_dirs and not any(d.startswith(prefix) for prefix in excluded_dir_prefixes)]
+        root_path = Path(root)
+        kept_dirs: list[str] = []
+        for directory in dirs:
+            if directory in excluded_dirs:
+                continue
+            if any(directory.startswith(prefix) for prefix in excluded_dir_prefixes):
+                continue
+            # Prune nested repositories so umbrella workspaces only cover their own files.
+            if (root_path / directory / ".git").exists():
+                continue
+            kept_dirs.append(directory)
+        dirs[:] = kept_dirs
         for filename in filenames:
-            path = Path(root) / filename
+            path = root_path / filename
             rel = path.relative_to(repo_root).as_posix()
             if path.suffix.lower() in ALLOWED_SOURCE_EXTS:
                 if rel in excluded_relative_paths:

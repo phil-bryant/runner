@@ -77,7 +77,7 @@ class TellerApiVersionFreshnessTests(unittest.TestCase):
             dashboard_url="https://dashboard.example.com",
             dashboard_psa_item="",
             dashboard_username_field="username",
-            dashboard_password_field="password",
+            dashboard_password_field="password",  # pragma: allowlist secret
             dashboard_otp_field="otp",
             timeout_seconds=1,
             baseline_version="2020-10-10",

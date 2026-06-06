@@ -24,6 +24,7 @@ echo "  key : ${TLS_KEY_FILE}"
 mkdir -p "$TLS_DIR"
 chmod 700 "$TLS_DIR"
 
+#R001: function tag for cert_is_self_signed
 cert_is_self_signed() {
   local meta unique_count
   meta="$(openssl x509 -in "$TLS_CERT_FILE" -noout -subject -issuer 2>/dev/null || true)"

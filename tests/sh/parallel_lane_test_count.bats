@@ -64,6 +64,40 @@ EOF
   [ "$output" = "12" ]
 }
 
+@test "sql unit lane parses pg_prove tests summary total" {
+  #R022-T01: Verify the sql-unit lane parses a pg_prove Files/Tests summary.
+  log_file="${TEST_REPO}/artifacts/parallel/t06-sql-summary.log"
+  cat > "$log_file" <<'EOF'
+./tests/sql/a.sql .. ok
+./tests/sql/b.sql .. ok
+All tests successful.
+Files=2, Tests=6, 0 wallclock secs ( 0.02 usr  0.01 sys +  0.04 cusr  0.00 csys =  0.07 CPU)
+Result: PASS
+EOF
+
+  run_count "t06_run_sql_unit_tests.sh" "$log_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = "6" ]
+}
+
+@test "sql unit lane falls back to summed TAP plan totals" {
+  #R022-T02: Verify SQL lane count sums TAP plans when pg_prove summary lines are unavailable.
+  log_file="${TEST_REPO}/artifacts/parallel/t06-sql-tap.log"
+  cat > "$log_file" <<'EOF'
+1..2
+ok 1 - creates helper schema
+ok 2 - loads fixtures
+1..3
+ok 1 - validates account row
+ok 2 - validates transaction row
+ok 3 - validates relation
+EOF
+
+  run_count "t06_run_sql_unit_tests.sh" "$log_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = "5" ]
+}
+
 @test "swift unit lane parses the last XCTest summary total" {
   #R012-T01: Verify the swift-unit lane parses the most recent XCTest summary total.
   log_file="${TEST_REPO}/artifacts/parallel/t08-swift.log"
@@ -109,6 +143,44 @@ EOF
   run_count "t08_run_swift_unit_tests.sh" "$log_file"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
+}
+
+#R001: function tag for <anonymous>
+@test "cpp integration lane parses ctest summary total" {
+  log_file="${TEST_REPO}/artifacts/parallel/t08-cpp.log"
+  cat > "$log_file" <<'EOF'
+[100%] Built target MailcartCoreTests
+Test project /tmp/build
+    Start 1: parser_integration
+1/3 Test #1: parser_integration ..................   Passed    0.01 sec
+    Start 2: importer_integration
+2/3 Test #2: importer_integration ................   Passed    0.01 sec
+    Start 3: cli_integration
+3/3 Test #3: cli_integration .....................   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 3
+EOF
+
+  run_count "t08_run_cpp_integration_tests.sh" "$log_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = "3" ]
+}
+
+#R001: function tag for <anonymous>
+@test "cpp integration lane parses mailcart final-count summary" {
+  log_file="${TEST_REPO}/artifacts/parallel/t08-cpp-mailcart.log"
+  cat > "$log_file" <<'EOF'
+Running TestMimeContent
+Running TestMailcartRobustness
+Running TestOutlookMailcartPopulation
+Running TestOutlookClientSearchAndRead
+All outlook integration checks passed.
+Final count: tests 4/4 passed, expectations 26/26 passed.
+EOF
+
+  run_count "t08_run_cpp_integration_tests.sh" "$log_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = "4" ]
 }
 
 @test "macOS UI regression lane parses scenario summary total" {

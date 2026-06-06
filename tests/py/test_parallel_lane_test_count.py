@@ -40,10 +40,27 @@ class ParallelLaneTestCountTests(unittest.TestCase):
         text = "================= 5 passed, 1 skipped in 0.42s ================="
         self.assertEqual(self.module._parse_pytest_total(text), 6)
 
+    def test_sql_unit_total_from_pg_prove_summary(self):
+        #R022-T01: Verify the sql-unit lane parses pg_prove Files/Tests summary counts.
+        text = "Files=2, Tests=9, 0 wallclock secs ( 0.02 usr  0.01 sys +  0.04 cusr  0.00 csys =  0.07 CPU)"
+        self.assertEqual(self.module._parse_sql_unit_total(text), 9)
+
     def test_swift_unit_total_from_xctest_summary(self):
         #R012-T01: Verify the swift-unit lane parses the most recent XCTest summary total.
         text = "Executed 12 tests, with 0 failures in 0.123 seconds"
         self.assertEqual(self.module._parse_swift_xctest_total(text), 12)
+
+    #R001: function tag for test_cpp_integration_total_from_ctest_summary
+    def test_cpp_integration_total_from_ctest_summary(self):
+        # Verify C++ integration lane count is parsed from ctest summary output.
+        text = "100% tests passed, 0 tests failed out of 7"
+        self.assertEqual(self.module._parse_cpp_integration_total(text), 7)
+
+    #R001: function tag for test_cpp_integration_total_from_mailcart_final_count
+    def test_cpp_integration_total_from_mailcart_final_count(self):
+        # Verify the mailcart C++ lane summary format resolves the test count.
+        text = "Final count: tests 4/4 passed, expectations 26/26 passed."
+        self.assertEqual(self.module._parse_cpp_integration_total(text), 4)
 
     def test_artifact_summary_integer_field(self):
         #R015-T01: Verify the fuzz lane reads `property_test_count` from its summary artifact.
@@ -90,6 +107,25 @@ class ParallelLaneTestCountTests(unittest.TestCase):
             ]):
                 rc = self.module.main()
         self.assertEqual(rc, 0)
+
+    #R001: function tag for test_cpp_lane_stem_uses_cpp_parser
+    def test_cpp_lane_stem_uses_cpp_parser(self):
+        # Verify renumbered C++ lane names still resolve counts from lane logs.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            lane_log = repo_root / "cpp.log"
+            lane_log.write_text("100% tests passed, 0 tests failed out of 11\n", encoding="utf-8")
+            count = self.module.resolve_lane_count("t08_run_cpp_integration_tests.sh", lane_log, repo_root)
+        self.assertEqual(count, 11)
+
+    def test_sql_lane_stem_uses_sql_parser(self):
+        #R022-T02: Verify renumbered SQL lane names resolve counts from pg_prove TAP plan output.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            lane_log = repo_root / "sql.log"
+            lane_log.write_text("1..2\nok 1 - first\nok 2 - second\n1..3\n", encoding="utf-8")
+            count = self.module.resolve_lane_count("t06_run_sql_unit_tests.sh", lane_log, repo_root)
+        self.assertEqual(count, 5)
 
 
 if __name__ == "__main__":

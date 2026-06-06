@@ -66,6 +66,7 @@ WRITE_TOKEN_HEADER_NAME="${WRITE_TOKEN_HEADER_NAME:-X-Teller-Write-Token}"
 
 mkdir -p "$REPORT_DIR"
 
+#R001: function tag for python_interpreter_usable
 python_interpreter_usable() {
   local candidate="$1"
   [[ -x "$candidate" ]] || return 1
@@ -82,6 +83,7 @@ if [[ -d "./${VENV_NAME}" ]] && [[ -f "./${VENV_NAME}/bin/activate" ]]; then
   fi
 fi
 
+#R001: function tag for require_command
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "❌ Missing required command: $1"
@@ -90,6 +92,7 @@ require_command() {
   fi
 }
 
+#R001: function tag for require_file
 require_file() {
   if [[ ! -f "$1" ]]; then
     echo "❌ Missing required file: $1"
@@ -97,6 +100,7 @@ require_file() {
   fi
 }
 
+#R001: function tag for count_report_findings
 count_report_findings() {
   local mode="$1"
   local report_path="$2"
@@ -134,6 +138,7 @@ print(count)
 PY
 }
 
+#R001: function tag for print_semgrep_findings
 print_semgrep_findings() {
   local report_path="$1"
   python3 - <<'PY' "$report_path"
@@ -170,6 +175,7 @@ for item in results:
 PY
 }
 
+#R001: function tag for print_tool_header
 print_tool_header() {
   # Delimit each security tool execution with a boxed descriptor header.
   local tool_name="$1"
@@ -228,6 +234,7 @@ ensure_security_venv() {
   fi
 }
 
+#R001: function tag for requirements_file_has_hashes
 requirements_file_has_hashes() {
   local requirements_file="$1"
   python3 - <<'PY' "$requirements_file"
@@ -242,6 +249,7 @@ raise SystemExit(0 if "--hash=sha256:" in content else 1)
 PY
 }
 
+#R001: function tag for require_hashed_requirements_file
 require_hashed_requirements_file() {
   local requirements_file="$1"
   require_file "$requirements_file"
@@ -252,6 +260,7 @@ require_hashed_requirements_file() {
   fi
 }
 
+#R001: function tag for generate_supply_chain_artifacts
 generate_supply_chain_artifacts() {
   require_hashed_requirements_file "$RUNTIME_REQUIREMENTS_FILE"
   require_hashed_requirements_file "$SECURITY_REQUIREMENTS_FILE"
@@ -266,6 +275,7 @@ generate_supply_chain_artifacts() {
     > "${REPORT_DIR}/supply-chain-artifacts.json"
 }
 
+#R001: function tag for security_toolchain_usable
 security_toolchain_usable() {
   local security_semgrep="${SECURITY_VENV_DIR}/bin/semgrep"
   if [[ ! -x "$security_semgrep" ]]; then
@@ -274,6 +284,7 @@ security_toolchain_usable() {
   "$security_semgrep" --version >/dev/null 2>&1
 }
 
+#R001: function tag for wait_for_http
 wait_for_http() {
   local url="$1"
   local timeout_seconds="${2:-30}"
@@ -296,6 +307,7 @@ wait_for_http() {
   done
 }
 
+#R001: function tag for run_zap_quick_scan
 run_zap_quick_scan() {
   local zap_cli_cmd="$1"
   local zap_home_dir="$2"
@@ -326,6 +338,7 @@ run_zap_quick_scan() {
   fi
 }
 
+#R001: function tag for read_classifier_write_token
 read_classifier_write_token() {
   # Resolve DAST write token only from 1psa.
   local write_token
@@ -337,6 +350,7 @@ read_classifier_write_token() {
   printf '%s' "$write_token"
 }
 
+#R001: function tag for run_swift_sast
 run_swift_sast() {
   local swift_report="$1"
   local swift_ui_dir="${SWIFT_UI_DIR:-./src/macos-ui}"
@@ -531,6 +545,7 @@ run_gitleaks_sast() {
 run_dast_checks() (
   set -euo pipefail
 
+  #R001: function tag for run_category_integrity_checks
   run_category_integrity_checks() {
     local report_dir_abs="$1"
     local integrity_report_path="${report_dir_abs}/category-integrity.json"
@@ -547,6 +562,7 @@ run_dast_checks() (
     fi
   }
 
+  #R001: function tag for prepare_schemathesis_openapi_fixture
   prepare_schemathesis_openapi_fixture() {
     local source_openapi_url="$1"
     local source_base_url="$2"
@@ -556,6 +572,7 @@ run_dast_checks() (
     python3 "./tests/py/security/schemathesis_fixture_prep.py"       "$source_openapi_url"       "$source_base_url"       "$output_schema_path"       "$write_token"       "$write_token_header_name"       ""       "${DAST_RUN_ID:-unknown}"
   }
 
+  #R001: function tag for run_delete_category_contract_check
   run_delete_category_contract_check() {
     local schema_path="$1"
     local source_base_url="$2"
@@ -786,6 +803,7 @@ configure_pip_audit_python() {
   fi
 }
 
+#R001: function tag for pip_version_gte
 pip_version_gte() {
   local lhs="$1"
   local rhs="$2"
@@ -806,6 +824,7 @@ raise SystemExit(0 if left >= right else 1)
 PY
 }
 
+#R001: function tag for pip_version_for_python
 pip_version_for_python() {
   local python_bin="$1"
   "$python_bin" - <<'PY'

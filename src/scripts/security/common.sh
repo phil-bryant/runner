@@ -56,12 +56,14 @@ security_resolve_asset() {
   fi
 }
 
+#R001: function tag for python_interpreter_usable
 python_interpreter_usable() {
   local candidate="$1"
   [[ -x "$candidate" ]] || return 1
   "$candidate" -c "import site" >/dev/null 2>&1
 }
 
+#R001: function tag for require_command
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     local requirements_file="${SECURITY_REQUIREMENTS_FILE:-./requirements/security/requirements-security.txt}"
@@ -71,6 +73,7 @@ require_command() {
   fi
 }
 
+#R001: function tag for require_file
 require_file() {
   if [[ ! -f "$1" ]]; then
     echo "❌ Missing required file: $1"
@@ -82,11 +85,13 @@ require_file() {
 # - Read RB_ENV_FALLBACK_FILE, else ONEPSA_ENV_PATH, else ~/.env.
 # - For password lookups, try ITEM.password then ITEM.
 # - Normalize item names so lowercase/hyphenated keys still resolve.
+#R001: function tag for rb_env_fallback_file_path
 rb_env_fallback_file_path() {
   local dotenv_path="${RB_ENV_FALLBACK_FILE:-${ONEPSA_ENV_PATH:-${HOME}/.env}}"
   printf '%s' "$dotenv_path"
 }
 
+#R001: function tag for rb_normalize_env_item_name
 rb_normalize_env_item_name() {
   local raw="$1"
   local normalized
@@ -94,6 +99,7 @@ rb_normalize_env_item_name() {
   printf '%s' "$normalized"
 }
 
+#R001: function tag for rb_onepsa_env_lookup_keys
 rb_onepsa_env_lookup_keys() {
   local item="$1"
   local field="${2:-password}"
@@ -123,6 +129,7 @@ rb_onepsa_env_lookup_keys() {
   done
 }
 
+#R001: function tag for rb_onepsa_env_lookup_keys_csv
 rb_onepsa_env_lookup_keys_csv() {
   local item="$1"
   local field="${2:-password}"
@@ -138,6 +145,7 @@ rb_onepsa_env_lookup_keys_csv() {
   printf '%s' "$joined"
 }
 
+#R001: function tag for rb_lookup_dotenv_key
 rb_lookup_dotenv_key() {
   local key="$1"
   local dotenv_path
@@ -189,6 +197,7 @@ PY
   return 1
 }
 
+#R001: function tag for rb_lookup_env_fallback
 rb_lookup_env_fallback() {
   local item="$1"
   local field="${2:-password}"
@@ -210,6 +219,7 @@ rb_lookup_env_fallback() {
 # Resolve a 1psa item, falling back to the matching environment variable when
 # 1psa cannot resolve it for ANY reason (missing CLI, timeout, rate limit / auth
 # error, not found). Only hard-fail when neither source yields a value.
+#R001: function tag for rb_read_1psa_item
 rb_read_1psa_item() {
   local item="$1"
   local field="${2:-password}"
@@ -283,6 +293,7 @@ PY
   return 1
 }
 
+#R001: function tag for print_tool_header
 print_tool_header() {
   local tool_name="$1"
   local explainer_line_1="$2"
@@ -297,6 +308,7 @@ print_tool_header() {
   printf '%s\n' "$border"
 }
 
+#R001: function tag for wait_for_http
 wait_for_http() {
   local url="$1"
   local timeout_seconds="${2:-30}"
@@ -319,6 +331,7 @@ wait_for_http() {
   done
 }
 
+#R001: function tag for redact_secret_in_file
 redact_secret_in_file() {
   local input_path="$1"
   local output_path="$2"
@@ -339,6 +352,7 @@ print(content, end="")
 PY
 }
 
+#R001: function tag for redact_secret_in_place
 redact_secret_in_place() {
   local path="$1"
   local secret="${2:-}"
