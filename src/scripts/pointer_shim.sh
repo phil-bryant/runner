@@ -10,11 +10,11 @@
 # delegate_golden call.
 #
 # Contract for callers (pointers):
-#   - Set RUNBOOK_PROFILE="<repo>" before sourcing. Explicit selection is
-#     preferred over guessing from a (possibly symlinked) basename.
 #   - Source this file via a path resolved relative to the pointer, e.g.
 #       source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../runner/src/scripts" \
 #         && pwd -P)/pointer_shim.sh"
+#   - Select an explicit profile after sourcing:
+#       select_runbook_profile "<repo>"
 #   - Call: delegate_golden "<target-relative-to-RUNNER_HOME>" "$@"
 
 #R001: Enable secure umask and strict shell mode for every pointer before delegation.
@@ -39,17 +39,24 @@ else
 fi
 export RUNBOOK_REPO_ROOT
 
-#R015: Load the repo-specific runbook profile the pointer selected via RUNBOOK_PROFILE.
-if [[ -z "${RUNBOOK_PROFILE:-}" ]]; then
-  echo "❌ pointer_shim: RUNBOOK_PROFILE must be set by the pointer before sourcing." >&2
-  exit 1
-elif [[ ! -f "${RUNNER_HOME}/config/runbook/${RUNBOOK_PROFILE}.env" ]]; then
-  echo "❌ pointer_shim: runbook profile not found: ${RUNNER_HOME}/config/runbook/${RUNBOOK_PROFILE}.env" >&2
-  exit 1
-else
+#R015: Load the repo-specific runbook profile selected explicitly by the pointer.
+select_runbook_profile() {
+  local runbook_profile="${1:-}"
+  if [[ -z "${runbook_profile}" ]]; then
+    echo "❌ pointer_shim: select_runbook_profile requires a profile argument." >&2
+    return 1
+  fi
+
+  local runbook_profile_env="${RUNNER_HOME}/config/runbook/${runbook_profile}.env"
+  if [[ ! -f "${runbook_profile_env}" ]]; then
+    echo "❌ pointer_shim: runbook profile not found: ${runbook_profile_env}" >&2
+    return 1
+  fi
+
+  export RUNBOOK_PROFILE="${runbook_profile}"
   # shellcheck source=/dev/null
-  source "${RUNNER_HOME}/config/runbook/${RUNBOOK_PROFILE}.env"
-fi
+  source "${runbook_profile_env}"
+}
 
 #R020: Delegate to the mapped runner golden under RUNNER_HOME with argument passthrough.
 delegate_golden() {
