@@ -65,8 +65,8 @@ select_runbook_profile() {
 delegate_golden() {
   local target="$1"
   shift
-  # Backward-compat mode for pointers that set RUNBOOK_PROFILE but do not call
-  # select_runbook_profile explicitly.
+  #R016: Backward-compat — auto-load RUNBOOK_PROFILE for legacy pointers that set
+  # it but never called select_runbook_profile, before delegation.
   if [[ -n "${RUNBOOK_PROFILE:-}" && "${POINTER_SHIM_PROFILE_LOADED:-}" != "1" ]]; then
     select_runbook_profile "${RUNBOOK_PROFILE}"
   fi

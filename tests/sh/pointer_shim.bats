@@ -59,7 +59,7 @@ write_tests_pointer() {
 }
 
 @test "pointer sourcing the shim runs with secure umask and strict shell mode" {
-  #R001-T01
+  #R001-T01: pointer runs with secure umask and strict shell mode
   write_top_pointer "p.sh" "demo" 'printf "umask=%s flags=%s\n" "$(umask)" "$-"; set -o | grep -q "pipefail.*on" && echo "pipefail=on"'
   run bash "${FIXTURE}/demo/p.sh"
   [ "$status" -eq 0 ]
@@ -70,7 +70,7 @@ write_tests_pointer() {
 }
 
 @test "shim exports RUNNER_HOME pointed at the runner tree" {
-  #R005-T01
+  #R005-T01: shim exports RUNNER_HOME pointed at the runner tree
   write_top_pointer "p.sh" "demo" 'printf "RUNNER_HOME=%s\n" "$RUNNER_HOME"'
   run bash "${FIXTURE}/demo/p.sh"
   [ "$status" -eq 0 ]
@@ -78,7 +78,7 @@ write_tests_pointer() {
 }
 
 @test "top-level pointer resolves RUNBOOK_REPO_ROOT to its repo directory" {
-  #R010-T01
+  #R010-T01: top-level pointer resolves RUNBOOK_REPO_ROOT to its repo dir
   write_top_pointer "p.sh" "demo" 'printf "REPO_ROOT=%s\n" "$RUNBOOK_REPO_ROOT"'
   run bash "${FIXTURE}/demo/p.sh"
   [ "$status" -eq 0 ]
@@ -86,7 +86,7 @@ write_tests_pointer() {
 }
 
 @test "tests/ pointer resolves RUNBOOK_REPO_ROOT to the repo root, not tests dir" {
-  #R010-T02
+  #R010-T02: tests/ pointer resolves RUNBOOK_REPO_ROOT to repo root, not tests dir
   write_tests_pointer "tp.sh" "demo" 'printf "REPO_ROOT=%s\n" "$RUNBOOK_REPO_ROOT"'
   run bash "${FIXTURE}/demo/tests/tp.sh"
   [ "$status" -eq 0 ]
@@ -95,7 +95,7 @@ write_tests_pointer() {
 }
 
 @test "shim sources the selected runbook profile" {
-  #R015-T01
+  #R015-T01: shim sources the selected runbook profile
   write_top_pointer "p.sh" "" 'select_runbook_profile "demo"; printf "DEMO=%s\n" "${DEMO_PROFILE_VAR:-unset}"'
   run bash "${FIXTURE}/demo/p.sh"
   [ "$status" -eq 0 ]
@@ -103,7 +103,7 @@ write_tests_pointer() {
 }
 
 @test "shim aborts when select_runbook_profile argument is unset" {
-  #R015-T02
+  #R015-T02: shim aborts when select_runbook_profile argument is unset
   write_top_pointer "p.sh" "" 'select_runbook_profile "${UNSET_PROFILE:-}"; printf "should-not-run\n"'
   run bash "${FIXTURE}/demo/p.sh"
   [ "$status" -ne 0 ]
@@ -112,7 +112,7 @@ write_tests_pointer() {
 }
 
 @test "delegate_golden execs the resolved golden with argument passthrough" {
-  #R020-T01
+  #R020-T01: delegate_golden execs the resolved golden with arg passthrough
   write_top_pointer "p.sh" "demo" 'delegate_golden "golden.sh" "$@"'
   run bash "${FIXTURE}/demo/p.sh" alpha beta
   [ "$status" -eq 0 ]
@@ -121,7 +121,7 @@ write_tests_pointer() {
 }
 
 @test "delegate_golden auto-loads RUNBOOK_PROFILE for legacy pointers" {
-  #R016-T01
+  #R016-T01: delegate_golden auto-loads RUNBOOK_PROFILE for legacy pointers
   write_top_pointer "p.sh" "demo" 'delegate_golden "golden.sh" "$@"'
   run bash "${FIXTURE}/demo/p.sh" legacy
   [ "$status" -eq 0 ]
@@ -130,7 +130,7 @@ write_tests_pointer() {
 }
 
 @test "delegate_golden resolves nested golden paths" {
-  #R020-T01
+  #R020-T01: delegate_golden resolves nested golden paths
   write_tests_pointer "tp.sh" "demo" 'delegate_golden "tests/nested_golden.sh" "$@"'
   run bash "${FIXTURE}/demo/tests/tp.sh" gamma
   [ "$status" -eq 0 ]

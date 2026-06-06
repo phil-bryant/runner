@@ -12,7 +12,7 @@ teardown() {
 }
 
 @test "exports canonical cache locations under artifacts/cache" {
-  #R001-T01
+  #R001-T01: exports canonical cache locations under artifacts/cache
   run bash -c "source '${SRC}'; export_test_cache_env '${FIXTURE}'; printf '%s|%s|%s\n' \"\$CACHE_ROOT\" \"\$PYTHONPYCACHEPREFIX\" \"\$RUFF_CACHE_DIR\""
   [ "$status" -eq 0 ]
   [[ "$output" == *"${FIXTURE}/artifacts/cache"* ]]
@@ -21,7 +21,7 @@ teardown() {
 }
 
 @test "defaults Hypothesis storage under the cache root" {
-  #R005-T01
+  #R005-T01: defaults Hypothesis storage under the cache root
   run bash -c "source '${SRC}'; export_test_cache_env '${FIXTURE}'; printf '%s\n' \"\$HYPOTHESIS_STORAGE_DIRECTORY\""
   [ "$status" -eq 0 ]
   [[ "$output" == *"artifacts/cache/hypothesis"* ]]

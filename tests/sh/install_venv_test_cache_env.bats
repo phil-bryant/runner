@@ -8,7 +8,7 @@ setup() {
 }
 
 @test "appends the teller cache marker exactly once across repeated installs" {
-  #R001-T01
+  #R001-T01: appends the teller cache marker exactly once across repeated installs
   mkdir -p "${FIXTURE}/venv/bin"
   : > "${FIXTURE}/venv/bin/activate"
   run bash -c "source '${SRC}'; install_venv_test_cache_env '${FIXTURE}/venv'; install_venv_test_cache_env '${FIXTURE}/venv'"
@@ -18,7 +18,7 @@ setup() {
 }
 
 @test "fails with a clear error when the activate script is missing" {
-  #R005-T01
+  #R005-T01: fails with a clear error when the activate script is missing
   mkdir -p "${FIXTURE}/venv/bin"
   run bash -c "source '${SRC}'; install_venv_test_cache_env '${FIXTURE}/venv'"
   [ "$status" -ne 0 ]

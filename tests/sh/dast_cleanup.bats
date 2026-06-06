@@ -7,19 +7,19 @@ setup() {
 }
 
 @test "module parses and reconciles classifications with bound SQL parameters" {
-  #R001-T01
+  #R001-T01: parses and reconciles classifications with bound SQL parameters
   run python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$SRC"
   [ "$status" -eq 0 ]
   grep -q "ANY(" "$SRC"
 }
 
 @test "refuses cleanup on profile mismatch unless force override is set" {
-  #R005-T01
+  #R005-T01: refuses cleanup on profile mismatch unless force override is set
   grep -q "DAST_CLEANUP_FORCE" "$SRC"
   grep -Eq "refus" "$SRC"
 }
 
 @test "treats missing/non-captured baselines as non-fatal skips" {
-  #R010-T01
+  #R010-T01: treats missing/non-captured baselines as non-fatal skips
   grep -q "skipped" "$SRC"
 }

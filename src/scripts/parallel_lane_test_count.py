@@ -32,6 +32,8 @@ def _normalize_report_dir(path_value: str, repo_root: Path) -> Path:
     return (repo_root / candidate).resolve()
 
 
+#R025: Security lanes resolve the report directory from the lane log `Reports:`
+# line (falling back to a default) and count discovered tool artifact files.
 def _extract_reports_dir_from_log(log_text: str, repo_root: Path, default: Path) -> Path:
     match = re.search(r"Reports:\s*(\S+)", log_text)
     if match is None:
@@ -39,6 +41,8 @@ def _extract_reports_dir_from_log(log_text: str, repo_root: Path, default: Path)
     return _normalize_report_dir(match.group(1), repo_root)
 
 
+#R015: Artifact-summary lanes read an integer count field from a summary JSON
+# (fuzz `property_test_count`, mutation `total`).
 def _read_int_field(path: Path, field: str) -> int | None:
     payload = _read_json(path)
     if not isinstance(payload, dict):
@@ -49,6 +53,7 @@ def _read_int_field(path: Path, field: str) -> int | None:
     return value
 
 
+#R001: Traceability lane count comes from the engine `Summary: total=N` line.
 def _parse_traceability_total(log_text: str) -> int | None:
     match = re.search(r"Summary:\s*total=(\d+)\s+pass=\d+\s+fail=\d+", log_text)
     if match is None:
@@ -56,6 +61,7 @@ def _parse_traceability_total(log_text: str) -> int | None:
     return int(match.group(1))
 
 
+#R005: Shell-unit lane count sums bats TAP plan lines, else counts `ok` results.
 def _parse_bats_total(log_text: str) -> int | None:
     plan_counts = [int(value) for value in re.findall(r"(?m)^\s*1\.\.(\d+)\s*$", log_text)]
     if plan_counts:
@@ -66,6 +72,8 @@ def _parse_bats_total(log_text: str) -> int | None:
     return None
 
 
+#R010: Python-unit lane count parses the pytest summary (0 for "no tests ran",
+# else summed outcome counts, with a `collected N items` fallback).
 def _parse_pytest_total(log_text: str) -> int | None:
     if re.search(r"(?m)no tests ran", log_text):
         return 0
@@ -93,6 +101,7 @@ def _count_existing(base_dir: Path, names: list[str]) -> int:
     return sum(1 for name in names if (base_dir / name).is_file())
 
 
+#R020: Quality lane counts only the non-skipped text sub-check reports present.
 def _count_non_skipped_text_reports(base_dir: Path, names: list[str]) -> int:
     total = 0
     for name in names:
@@ -191,6 +200,8 @@ def main() -> int:
     repo_root = Path(args.repo_root).resolve()
     count = resolve_lane_count(args.lane_script, lane_log, repo_root)
 
+    #R030: CLI prints a single-test fallback when a lane is unknown or yields no
+    # usable (None/negative) count, otherwise prints the resolved count.
     if count is None:
         print("1")
         return 0

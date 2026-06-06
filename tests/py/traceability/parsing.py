@@ -38,6 +38,7 @@ _PYTHON_START_RE = re.compile(r"^\s*def\s+test[_A-Za-z0-9]*\s*\(")
 _SWIFT_START_RE = re.compile(r"^\s*func\s+test[_A-Za-z0-9]*\s*\(")
 
 
+#R001: Extract requirement IDs from requirements docs (lines beginning `Rxxx`).
 def extract_requirement_ids(text: str) -> list[str]:
     ids = set()
     for line in text.splitlines():
@@ -47,11 +48,13 @@ def extract_requirement_ids(text: str) -> list[str]:
     return sorted(ids)
 
 
+#R005: Extract source #R tag IDs (scoped or bare) from a source file's text.
 def extract_source_ids(text: str) -> list[str]:
     ids = {match.group(1) for match in SOURCE_TAG_PATTERN.finditer(text)}
     return sorted(ids)
 
 
+#R010: Extract only scoped source IDs (the `#Rxxx: <text>` form, ignoring bare tags).
 def extract_scoped_source_ids(text: str) -> list[str]:
     ids = {match.group(1) for match in SCOPED_SOURCE_TAG_PATTERN.finditer(text)}
     return sorted(ids)
@@ -104,6 +107,8 @@ def extract_ui_required_ids(text: str) -> list[str]:
     return sorted(ids)
 
 
+#R015: Parse numbered `- Rxxx-Tnn:` test bullets under `Tests:`, scoped to the
+# requirement they belong to.
 def extract_numbered_requirement_test_ids(text: str) -> list[str]:
     current_requirement_id: str | None = None
     in_tests = False
@@ -128,6 +133,8 @@ def extract_numbered_requirement_test_ids(text: str) -> list[str]:
     return sorted(ids)
 
 
+#R020: Validate numbered test bullets are well-formed and matched to their owning
+# requirement (flag unnumbered/mismatched bullets under `Tests:`).
 def verify_requirements_numbered_test_bullets(text: str, requirements_file: str) -> list[str]:
     current_requirement_id: str | None = None
     in_tests = False
@@ -170,6 +177,8 @@ def verify_requirements_numbered_test_bullets(text: str, requirements_file: str)
     return issues
 
 
+#R025: Extract numbered `#Rxxx-Tnn` tags from a test file and enforce that they
+# live inside executable test blocks (reporting misplaced tags).
 def extract_numbered_test_ids(test_file: Path) -> tuple[list[str], list[str]]:
     suffix = test_file.suffix.lower()
     is_bats = suffix == ".bats"
@@ -251,6 +260,44 @@ def extract_numbered_test_ids(test_file: Path) -> tuple[list[str], list[str]]:
         idx += 1
 
     return sorted(ids), misplaced
+
+
+_ANY_SOURCE_TAG_PATTERN = re.compile(r"#(R\d{3}(?:-\d{3})*)(-T\d{2})?")
+_SCOPED_SUFFIX_PATTERN = re.compile(r":\s*\S")
+
+
+#R030: Locate bare source #R tags that omit scoped requirement text (strictness).
+def find_unscoped_source_tags(text: str) -> list[str]:
+    """Locate source #Rxxx tags that carry no scoped requirement text.
+
+    A compliant source tag is the scoped form ``#Rxxx: <text>``; a bare ``#Rxxx``
+    with nothing meaningful after it is reported as ``<line>:<tag>``. Numbered
+    test tags (``#Rxxx-Tnn``) are intentionally ignored here; see
+    :func:`find_unscoped_numbered_test_tags`.
+    """
+    issues: list[str] = []
+    for idx, line in enumerate(text.splitlines(), start=1):
+        for match in _ANY_SOURCE_TAG_PATTERN.finditer(line):
+            if match.group(2):
+                continue
+            if not _SCOPED_SUFFIX_PATTERN.match(line[match.end():]):
+                issues.append(f"{idx}:{match.group(0)}")
+    return issues
+
+
+#R035: Locate numbered #Rxxx-Tnn test tags that omit scoped text (strictness).
+def find_unscoped_numbered_test_tags(text: str) -> list[str]:
+    """Locate numbered ``#Rxxx-Tnn`` test tags that carry no scoped text.
+
+    A compliant numbered tag is ``#Rxxx-Tnn: <text>``; a bare ``#Rxxx-Tnn`` is
+    reported as ``<line>:#<tag>``.
+    """
+    issues: list[str] = []
+    for idx, line in enumerate(text.splitlines(), start=1):
+        for match in NUMBERED_TEST_TAG_PATTERN.finditer(line):
+            if not _SCOPED_SUFFIX_PATTERN.match(line[match.end():]):
+                issues.append(f"{idx}:#{match.group(1)}")
+    return issues
 
 
 def format_bulleted(items: Iterable[str], prefix: str = "  - ") -> str:

@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
+#R001: Secure umask and strict shell mode for the traceability lane entrypoint.
 umask 007
 set -euo pipefail
 
+#R005: Resolve RUNNER_HOME/RUNBOOK_REPO_ROOT through the shared runbook contract
+# and operate from the target repo root regardless of caller cwd.
 SCRIPT_PATH="${BASH_SOURCE[0]-$0}"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 # shellcheck source=/dev/null
@@ -9,27 +12,10 @@ source "${SCRIPT_DIR}/../src/scripts/runbook_common.sh"
 REPO_ROOT="$RUNBOOK_REPO_ROOT"
 
 cd "$REPO_ROOT"
-#R001: Wrapper preserves strict shell-mode entrypoint contract for traceability checks.
-#R005: Wrapper delegates all-requirements discovery behavior to Python traceability CLI.
-#R010: Wrapper delegates source-resolution policy to Python traceability CLI.
-#R015: Wrapper delegates explicit missing-file/mapping failures to Python traceability CLI.
-#R020: Wrapper delegates requirements-ID parsing to Python traceability CLI.
-#R025: Wrapper delegates #R tag parsing to Python traceability CLI.
-#R030: Wrapper delegates set-difference reporting for missing/extra IDs.
-#R035: Wrapper delegates aggregate pass/fail exit behavior to Python traceability CLI.
-#R040: Wrapper delegates numbered script -> requirements coverage checks.
-#R045: Wrapper delegates numbered requirements scope-alignment checks.
-#R050: Wrapper delegates test-file discovery conventions to Python traceability CLI.
-#R055: Wrapper delegates UI-lane requirement-ID classification checks.
-#R060: Wrapper delegates per-lane test #R tag extraction checks.
-#R065: Wrapper delegates requirement-to-test coverage enforcement checks.
-#R070: Wrapper delegates anti-cheat and scoped #R comment enforcement checks.
-#R075: Wrapper delegates requirements-only mode handling.
-#R080: Wrapper delegates numbered script companion-test coverage checks.
-#R085: Wrapper delegates repository software requirements-coverage checks.
-#R090: Wrapper delegates numbered test-tag 1:1 enforcement checks.
-#R005: Default to the runner traceability engine so shared requirements/bats
-# roots are evaluated consistently across repos.
+
+#R010: Select the traceability engine on PYTHONPATH, defaulting to the runner
+# engine (runner-first) so shared requirements/bats roots evaluate consistently;
+# allow a repo-first override that falls back to runner when absent.
 TRACEABILITY_PYTHONPATH="${RUNNER_HOME}/tests/py"
 if [[ "${TRACEABILITY_ENGINE_MODE:-runner-first}" == "repo-first" ]]; then
   TRACEABILITY_PYTHONPATH="${REPO_ROOT}/tests/py"
@@ -37,7 +23,10 @@ if [[ "${TRACEABILITY_ENGINE_MODE:-runner-first}" == "repo-first" ]]; then
     TRACEABILITY_PYTHONPATH="${RUNNER_HOME}/tests/py"
   fi
 fi
+
+#R020: Delegate the entire check to the Python traceability CLI, passing
+# arguments through unchanged and propagating its exit status. The wrapper takes
+# no coverage self-exemption; its own requirements doc traces it like any source.
 exec env \
   PYTHONPATH="${TRACEABILITY_PYTHONPATH}${PYTHONPATH:+:${PYTHONPATH}}" \
-  TRACEABILITY_EXCLUDE_SOURCE="$(basename "$0")" \
   python3 -m traceability.cli "$@"

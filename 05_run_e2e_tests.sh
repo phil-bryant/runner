@@ -4,6 +4,7 @@ umask 007
 #R001: Enforce strict fail-fast behavior.
 set -euo pipefail
 
+#R005: Source the runbook contract and resolve repo root, venv python, and test paths.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/src/scripts/runbook_common.sh"

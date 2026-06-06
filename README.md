@@ -211,6 +211,37 @@ are sound.
 The angle is simple: before the engine gates a sibling repo, it has already gated itself, and every delegation
 edge into a golden is held to a contract.
 
+## Traceability of Traceability
+
+The requirements-traceability engine used to be the one blind spot — the tool that demands a requirements doc and
+tagged tests for every other file was itself excluded from the scan it runs. That exclusion is gone. The engine
+now holds itself to the exact standard it enforces on everything else: it traces *itself*.
+
+- **The engine's own source is a first-class traced surface.** The lane wrapper
+  (`tests/t04_run_requirements_traceability_tests.sh`) and the Python engine modules
+  (`tests/py/traceability/{cli,discovery,parsing,verification}.py`) each have a companion requirements doc —
+  `requirements/tests/t04_run_requirements_traceability_tests-requirements.md` and
+  `requirements/tests/py/traceability/{cli,discovery,parsing,verification}-requirements.md` — carry scoped
+  `#Rnnn:` requirement tags in the source, and are exercised by tagged tests
+  (`tests/py/test_{cli,discovery,parsing,verification}.py` and
+  `tests/sh/t04_run_requirements_traceability_tests.bats`) bearing `#Rnnn-Tnn:` test tags. The engine is now
+  *included* in coverage rather than carved out of it.
+- **Mandatory tag text, unconditional and non-disablable.** Every `#Rnnn` source tag and every `#Rnnn-Tnn` test
+  tag must carry its scoped requirement text (`#Rnnn: <text>`); a bare tag fails the lane. This check is
+  deliberately *not* gated behind any environment knob — there is no opt-out flag to quietly lower the bar in a
+  future change. Text is the point: a tag with no statement is traceability theater, and the engine refuses it.
+- **Full-coverage enforcement on by default.** The repository-source coverage check is on, so a software file
+  that ships without a requirements doc is a hard failure — and that rule now binds the engine's own modules just
+  like any other source. New engine code can't land untraced.
+- **The requirements-only loophole is closed.** "Requirements-only mode" is legitimate only for docs with no
+  mappable first-party source in the repo (e.g. thin cross-repo pointer docs). If real in-repo source exists, the
+  doc fails closed and must be fully traced to source and tests — so no one can hide working code behind a
+  requirements-only flag to dodge enforcement.
+
+The meta-point is the whole point: a traceability engine that exempts itself is asking for trust it hasn't
+earned. This one earns it by passing its own gate — same scoped tags, same mandatory text, same coverage rule,
+no exemptions.
+
 ## Constraints
 
 - No Docker (workspace rule).

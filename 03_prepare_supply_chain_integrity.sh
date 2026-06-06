@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
+#R001: Fail-fast strict shell mode (secure umask + set -euo pipefail) for the supply-chain prep lane.
 umask 007
 set -euo pipefail
-
-#R001: New pre-install integrity step runs before dependency installation.
-#R005: Require the project virtual environment to exist and be active.
-#R010: Compile hashed lockfiles from pip-tools source manifests.
-#R015: Prepare SBOM + signing scaffold artifacts before install and test lanes.
 
 SCRIPT_PATH="${BASH_SOURCE[0]-$0}"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
@@ -13,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 REPO_ROOT="${RUNBOOK_REPO_ROOT:-$SCRIPT_DIR}"
 cd "$REPO_ROOT"
 
+#R005: Require the project <dir>-venv to exist and be the active VIRTUAL_ENV (resolved paths must match).
 CURRENT_DIRECTORY_NAME="$(basename "$(pwd)")"
 VENV_DIR="${CURRENT_DIRECTORY_NAME}-venv"
 
@@ -57,6 +54,7 @@ else
   SIGNING_MODE="${SUPPLY_CHAIN_SIGNING_MODE}"
 fi
 
+#R010: Compile hash-pinned runtime + security lockfiles from pip-tools .in manifests via pip-compile.
 for file_path in "$RUNTIME_IN_FILE" "$SECURITY_IN_FILE"; do
   if [[ ! -f "$file_path" ]]; then
     echo "❌ Missing pip-tools source requirements file: $file_path"
@@ -89,6 +87,7 @@ pip-compile \
   --output-file "$SECURITY_LOCK_FILE" \
   "$SECURITY_IN_FILE"
 
+#R015: Prepare SBOM + signing scaffold artifacts via the security generator script.
 echo "▶ Preparing SBOM + signing scaffold artifacts (${SUPPLY_CHAIN_ARTIFACTS_DIR})"
 python3 ./src/scripts/security/generate_supply_chain_artifacts.py \
   --runtime-lock "$RUNTIME_LOCK_FILE" \

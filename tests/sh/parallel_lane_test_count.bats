@@ -18,6 +18,7 @@ run_count() {
 }
 
 @test "traceability lane uses summary total count" {
+  #R001-T01: Verify the traceability lane returns the total from a summary log line.
   log_file="${TEST_REPO}/artifacts/parallel/t04.log"
   cat > "$log_file" <<'EOF'
 Traceability check for all requirements/**/*-requirements.md
@@ -31,6 +32,7 @@ EOF
 }
 
 @test "shell unit lane sums bats TAP plans" {
+  #R005-T01: Verify the shell-unit lane sums multiple bats TAP plan counts.
   log_file="${TEST_REPO}/artifacts/parallel/t05.log"
   cat > "$log_file" <<'EOF'
 1..2
@@ -48,6 +50,7 @@ EOF
 }
 
 @test "python unit lane parses pytest passed summary" {
+  #R010-T01: Verify the python-unit lane parses the pytest passed-summary count.
   log_file="${TEST_REPO}/artifacts/parallel/t06.log"
   cat > "$log_file" <<'EOF'
 ▶ Running Python unit tests (pytest)...
@@ -60,6 +63,7 @@ EOF
 }
 
 @test "fuzz lane reads property_test_count from summary artifact" {
+  #R015-T01: Verify the fuzz lane reads property_test_count from its summary artifact.
   log_file="${TEST_REPO}/artifacts/parallel/t08.log"
   mkdir -p "${TEST_REPO}/artifacts/fuzz"
   cat > "${TEST_REPO}/artifacts/fuzz/fuzz-summary.json" <<'EOF'
@@ -73,6 +77,7 @@ EOF
 }
 
 @test "quality lane counts non-skipped sub-check reports" {
+  #R020-T01: Verify the quality lane counts only non-skipped sub-check reports.
   log_file="${TEST_REPO}/artifacts/parallel/t00.log"
   report_dir="${TEST_REPO}/artifacts/quality/reports"
   mkdir -p "$report_dir"
@@ -89,6 +94,7 @@ EOF
 }
 
 @test "static security lane counts discovered tool artifacts from report path in log" {
+  #R025-T01: Verify the static security lane counts discovered tool artifacts from the report path declared in the log.
   log_file="${TEST_REPO}/artifacts/parallel/t03.log"
   report_rel="./custom/security/reports"
   report_abs="${TEST_REPO}/custom/security/reports"
@@ -106,6 +112,7 @@ EOF
 }
 
 @test "unknown lanes fall back to one test" {
+  #R030-T01: Verify an unknown lane falls back to printing 1.
   log_file="${TEST_REPO}/artifacts/parallel/unknown.log"
   : > "$log_file"
 

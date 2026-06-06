@@ -9,6 +9,32 @@ from .parsing import extract_source_files_from_requirements
 ALLOWED_SOURCE_EXTS = {".sh", ".py", ".swift", ".sql", ".c", ".cc", ".cpp", ".cxx", ".m", ".mm", ".h", ".hpp"}
 ALLOWED_SOURCE_NAMES = {"Makefile", ".gitignore"}
 
+# The traceability engine itself lives under tests/, which is otherwise excluded
+# from repository-source coverage. The tool must keep its own house in order, so
+# these sources are force-included in the coverage universe: an undocumented
+# engine module is then flagged just like any other untraced source file.
+TRACEABILITY_ENGINE_DIR = "tests/py/traceability"
+TRACEABILITY_ENGINE_WRAPPER = "tests/t04_run_requirements_traceability_tests.sh"
+
+
+#R025: Self-coverage — force-include the traceability engine's own sources so the
+# tool keeps its own house in order even though the rest of tests/ is excluded.
+def list_traceability_engine_files(repo_root: Path) -> list[str]:
+    files: set[str] = set()
+    engine_dir = repo_root / TRACEABILITY_ENGINE_DIR
+    if engine_dir.is_dir():
+        for path in engine_dir.rglob("*.py"):
+            if path.name == "__init__.py":
+                continue
+            if "__pycache__" in path.parts:
+                continue
+            if path.is_file():
+                files.add(path.relative_to(repo_root).as_posix())
+    wrapper = repo_root / TRACEABILITY_ENGINE_WRAPPER
+    if wrapper.is_file():
+        files.add(wrapper.relative_to(repo_root).as_posix())
+    return sorted(files)
+
 
 def _parse_root_list(raw_value: str, repo_root: Path) -> list[Path]:
     roots: list[Path] = []
@@ -29,6 +55,8 @@ def _parse_root_list(raw_value: str, repo_root: Path) -> list[Path]:
     return roots
 
 
+#R001: Resolve requirements roots, defaulting to repo_root/requirements and
+# honoring a TRACEABILITY_REQUIREMENTS_ROOTS override (colon/comma/newline list).
 def list_requirements_roots(repo_root: Path) -> list[Path]:
     configured = os.environ.get("TRACEABILITY_REQUIREMENTS_ROOTS", "").strip()
     if configured:
@@ -56,6 +84,7 @@ def _requirements_root_for_file(requirements_file: Path, repo_root: Path) -> Pat
     return None
 
 
+#R005: Enumerate requirements docs by globbing `*-requirements.md` under roots.
 def list_requirements_files(repo_root: Path) -> list[Path]:
     files: set[Path] = set()
     for root in list_requirements_roots(repo_root):
@@ -65,6 +94,7 @@ def list_requirements_files(repo_root: Path) -> list[Path]:
     return sorted(files)
 
 
+#R010: Extract a doc's declared source files from its Scope section (backtick paths).
 def extract_source_files_from_requirements_path(requirements_file: Path) -> list[str]:
     return extract_source_files_from_requirements(requirements_file.read_text(encoding="utf-8"))
 
@@ -91,6 +121,8 @@ def extract_source_files_from_analogous_tree(requirements_file: Path, repo_root:
     return sorted(matches)
 
 
+#R015: Discover companion test files for a doc/source set by convention
+# (shell `<stem>.bats`, python `tests/py/test_<stem>.py`, swift lanes, etc.).
 def discover_test_files_for_requirements(
     requirements_file: Path, source_files: list[str], repo_root: Path
 ) -> tuple[list[str], list[str]]:
@@ -170,8 +202,9 @@ def discover_test_files_for_requirements(
     return sorted(path.as_posix() for path in default_results), sorted(path.as_posix() for path in ui_results)
 
 
-def list_repository_software_files(repo_root: Path, excluded_path: Path | None = None) -> list[str]:
-    excluded_real = excluded_path.resolve() if excluded_path else None
+#R020: Enumerate repository software files for coverage, applying directory and
+# path exclusions (vendored/generated/test trees, etc.).
+def list_repository_software_files(repo_root: Path) -> list[str]:
     excluded_dirs = {
         ".git",
         ".cursor",
@@ -206,8 +239,6 @@ def list_repository_software_files(repo_root: Path, excluded_path: Path | None =
         dirs[:] = [d for d in dirs if d not in excluded_dirs and not any(d.startswith(prefix) for prefix in excluded_dir_prefixes)]
         for filename in filenames:
             path = Path(root) / filename
-            if excluded_real and path.resolve() == excluded_real:
-                continue
             rel = path.relative_to(repo_root).as_posix()
             if path.suffix.lower() in ALLOWED_SOURCE_EXTS:
                 if rel in excluded_relative_paths:
@@ -215,4 +246,9 @@ def list_repository_software_files(repo_root: Path, excluded_path: Path | None =
                 if any(rel.startswith(prefix) for prefix in excluded_relative_prefixes):
                     continue
                 files.add(rel)
+    # Self-coverage: pull the traceability engine's own sources back into the
+    # universe even though the rest of tests/ is excluded. The engine grants
+    # itself no exemption — every engine source must be covered like any other.
+    for engine_rel in list_traceability_engine_files(repo_root):
+        files.add(engine_rel)
     return sorted(files)

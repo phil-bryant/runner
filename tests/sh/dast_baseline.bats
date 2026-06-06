@@ -7,7 +7,7 @@ setup() {
 }
 
 @test "module parses and snapshots the mutable DAST-affected tables" {
-  #R001-T01
+  #R001-T01: parses and snapshots the mutable DAST-affected tables
   run python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$SRC"
   [ "$status" -eq 0 ]
   grep -q "nys_snw_category" "$SRC"
@@ -16,11 +16,11 @@ setup() {
 }
 
 @test "degrades to a skipped payload when database deps are unavailable" {
-  #R005-T01
+  #R005-T01: degrades to a skipped payload when database deps are unavailable
   grep -q "skipped" "$SRC"
 }
 
 @test "emits an operator-readable summary payload" {
-  #R010-T01
+  #R010-T01: emits an operator-readable summary payload
   grep -Eq "status|profile" "$SRC"
 }

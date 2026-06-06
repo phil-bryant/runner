@@ -240,7 +240,7 @@ ensure_xcode_toolchain() {
 }
 
 ensure_swift_tooling() {
-    #R025: Ensure Swift compiler is discoverable via xcrun.
+    #R055: Ensure the Swift compiler (swiftc) is discoverable via xcrun.
     echo ""
     echo "[Swift] Checking..."
     if xcrun --find swiftc >/dev/null 2>&1; then
@@ -253,7 +253,7 @@ ensure_swift_tooling() {
 }
 
 ensure_xcode_ready() {
-    #R060: Ensure xcodebuild exists and Xcode first-launch setup is complete.
+    #R065: Ensure xcodebuild exists and Xcode first-launch/license setup is complete.
     echo ""
     echo "[Xcode] Checking..."
     if ! command -v xcodebuild >/dev/null 2>&1; then
@@ -322,6 +322,7 @@ run_verify_mode() {
     fi
 }
 
+#R030: Install-mode orchestration: print banner, install brew formulas/casks, then run each enabled ensure_* step in order.
 run_install_mode() {
     print_header
     ensure_homebrew
@@ -364,6 +365,7 @@ run_install_mode() {
     fi
 }
 
+#R095: Top-level mode dispatch: route to verify-only or full install based on PREREQ_MODE.
 if [ "$PREREQ_MODE" = "verify" ]; then
     run_verify_mode
 else

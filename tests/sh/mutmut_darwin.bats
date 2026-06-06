@@ -8,7 +8,7 @@ setup() {
 }
 
 @test "driver parses and splits prepare/execute phases" {
-  #R001-T01
+  #R001-T01: driver parses and splits prepare/execute phases
   run python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$SRC"
   [ "$status" -eq 0 ]
   grep -q "prepare" "$SRC"
@@ -16,7 +16,7 @@ setup() {
 }
 
 @test "driver configures a deterministic subprocess pytest environment" {
-  #R005-T01
+  #R005-T01: driver configures a deterministic subprocess pytest environment
   grep -q "root / \"mutants\" / \"src\"" "$SRC"
   grep -q "PYTHONPATH" "$SRC"
   grep -q "MUTATION_WORKERS" "$SRC"
@@ -27,7 +27,7 @@ setup() {
 }
 
 @test "stub module installs a callable setproctitle symbol" {
-  #R010-T01
+  #R010-T01: stub module installs a callable setproctitle symbol
   run python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$STUB"
   [ "$status" -eq 0 ]
   grep -q "setproctitle" "$STUB"

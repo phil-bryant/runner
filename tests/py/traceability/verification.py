@@ -18,6 +18,8 @@ from .parsing import (
     extract_scoped_source_ids,
     extract_source_ids,
     extract_ui_required_ids,
+    find_unscoped_numbered_test_tags,
+    find_unscoped_source_tags,
     format_bulleted,
     verify_requirements_numbered_test_bullets,
     detect_header_bundle_tags,
@@ -42,6 +44,7 @@ class TraceabilityVerifier:
         return 1
 
     def verify_all_requirements(self) -> bool:
+        #R035: Aggregate per-doc and global checks into a pass/fail summary + status.
         requirements_files = list_requirements_files(self.repo_root)
         if not requirements_files:
             print("❌ FAIL: no requirements files found under requirements/**/*-requirements.md")
@@ -53,7 +56,7 @@ class TraceabilityVerifier:
         enforceable_count = 0
         for requirements_file in requirements_files:
             total += 1
-            if not self.is_requirements_only_mode(requirements_file):
+            if not self._is_legitimate_requirements_only(requirements_file):
                 enforceable_count += 1
             if self.verify_requirements_file_sources(requirements_file):
                 passed += 1
@@ -80,9 +83,9 @@ class TraceabilityVerifier:
         return False
 
     def verify_single_pair_with_tests(self, requirements_file: Path, source_file: Path) -> bool:
-        if self.is_requirements_only_mode(requirements_file):
-            print(f"✅ PASS (requirements-only): {self._rel(requirements_file)} (source/test traceability skipped)")
-            return True
+        ro = self._handle_requirements_only(requirements_file)
+        if ro is not None:
+            return ro
         source_list = [self._rel(source_file)]
         default_tests, ui_tests = discover_test_files_for_requirements(requirements_file, source_list, self.repo_root)
         tests_inline = tests_inline_from_list(sorted(set(default_tests + ui_tests)))
@@ -98,6 +101,8 @@ class TraceabilityVerifier:
         if not self.verify_single_pair(requirements_file, source_file, print_banner=False):
             status = False
         if not self.verify_requirements_test_traceability(requirements_file, source_list):
+            status = False
+        if not self.verify_numbered_test_tag_text(requirements_file, source_list):
             status = False
         if self._env_flag_false("STRICT_TRACEABILITY_NUMBERED_BULLETS"):
             print(
@@ -115,9 +120,9 @@ class TraceabilityVerifier:
         return status
 
     def verify_requirements_file_sources(self, requirements_file: Path) -> bool:
-        if self.is_requirements_only_mode(requirements_file):
-            print(f"✅ PASS (requirements-only): {self._rel(requirements_file)} (source/test traceability skipped)")
-            return True
+        ro = self._handle_requirements_only(requirements_file)
+        if ro is not None:
+            return ro
 
         source_list = extract_source_files_from_requirements_path(requirements_file)
         if not source_list:
@@ -158,6 +163,8 @@ class TraceabilityVerifier:
         if enforceable_source_list:
             if not self.verify_requirements_test_traceability(requirements_file, enforceable_source_list):
                 file_fail = True
+            if not self.verify_numbered_test_tag_text(requirements_file, enforceable_source_list):
+                file_fail = True
             if self._env_flag_false("STRICT_TRACEABILITY_NUMBERED_BULLETS"):
                 print(
                     f"ℹ️  Numbered requirements bullet enforcement skipped for {self._rel(requirements_file)} (set STRICT_TRACEABILITY_NUMBERED_BULLETS=true to re-enable)."
@@ -195,6 +202,7 @@ class TraceabilityVerifier:
             return self.verify_locked_exception(requirements_file, source_file)
 
         source_text = source_file.read_text(encoding="utf-8")
+        #R010: Anti-cheat — reject header-level bundled #R tags (force scoped, per-block tags).
         header_bundle_line = detect_header_bundle_tags(source_text)
         if header_bundle_line:
             print(f"❌ FAIL (anti-cheat): header-level bundled #R tags detected in {self._rel(source_file)}:")
@@ -203,9 +211,24 @@ class TraceabilityVerifier:
             return False
         if not self.verify_strict_pair(requirements_file, source_file):
             return False
-        return self.verify_scoped_traceability_comments(requirements_file, source_file)
+        if not self.verify_scoped_traceability_comments(requirements_file, source_file):
+            return False
+        return self.verify_source_tag_text_strictness(source_file)
+
+    def verify_source_tag_text_strictness(self, source_file: Path) -> bool:
+        #R040: Source #R tags must carry scoped requirement text (unconditional).
+        # Unconditional anti-cheat: every source #R tag must carry scoped
+        # requirement text (`#Rxxx: <text>`). There is intentionally no env knob
+        # to disable this, so the standard cannot be quietly turned off.
+        issues = find_unscoped_source_tags(source_file.read_text(encoding="utf-8"))
+        if not issues:
+            return True
+        print(f"❌ FAIL (tag-text): bare #R tags must be scoped '#Rxxx: <text>' in {self._rel(source_file)}:")
+        print(format_bulleted(sorted(set(issues))))
+        return False
 
     def verify_strict_pair(self, requirements_file: Path, source_file: Path) -> bool:
+        #R001: Enforce a strict 1:1 between requirement IDs and source #R tags.
         req_ids = set(extract_requirement_ids(requirements_file.read_text(encoding="utf-8")))
         source_ids = set(extract_source_ids(source_file.read_text(encoding="utf-8")))
         missing_ids = sorted(req_ids - source_ids)
@@ -221,6 +244,7 @@ class TraceabilityVerifier:
         return False
 
     def verify_scoped_traceability_comments(self, requirements_file: Path, source_file: Path) -> bool:
+        #R005: Require a scoped `#Rxxx:` comment in source for every requirement ID.
         req_ids = set(extract_requirement_ids(requirements_file.read_text(encoding="utf-8")))
         scoped_source_ids = set(extract_scoped_source_ids(source_file.read_text(encoding="utf-8")))
         missing = sorted(req_ids - scoped_source_ids)
@@ -231,6 +255,7 @@ class TraceabilityVerifier:
         return False
 
     def verify_requirements_test_traceability(self, requirements_file: Path, source_list: list[str]) -> bool:
+        #R015: Require at least one tagged test (#Rxxx) per requirement ID.
         req_text = requirements_file.read_text(encoding="utf-8")
         req_ids = set(extract_requirement_ids(req_text))
         ui_req_ids = set(extract_ui_required_ids(req_text))
@@ -257,7 +282,27 @@ class TraceabilityVerifier:
         print(format_bulleted(missing))
         return False
 
+    def verify_numbered_test_tag_text(self, requirements_file: Path, source_list: list[str]) -> bool:
+        #R045: Numbered #Rxxx-Tnn test tags must carry scoped text (unconditional).
+        # Unconditional anti-cheat: every numbered `#Rxxx-Tnn` tag in a discovered
+        # test file must carry scoped requirement text (`#Rxxx-Tnn: <text>`). This
+        # runs regardless of the numbered-tag/coverage knobs and has no opt-out.
+        default_tests, ui_tests = discover_test_files_for_requirements(requirements_file, source_list, self.repo_root)
+        combined_tests = sorted(set(default_tests + ui_tests))
+        text_issues: list[str] = []
+        for test_file in combined_tests:
+            path = self._to_repo_path(test_file)
+            if path.is_file():
+                for issue in find_unscoped_numbered_test_tags(path.read_text(encoding="utf-8")):
+                    text_issues.append(f"{self._rel(path)}:{issue}")
+        if not text_issues:
+            return True
+        print("❌ FAIL (numbered-test-tag-text): numbered #Rxxx-Tnn tags must be scoped '#Rxxx-Tnn: <text>':")
+        print(format_bulleted(sorted(set(text_issues))))
+        return False
+
     def verify_numbered_test_traceability(self, requirements_file: Path, source_list: list[str]) -> bool:
+        #R020: Enforce numbered #Rxxx-Tnn 1:1 mapping + in-test-block placement.
         if self._env_flag_false("STRICT_TRACEABILITY_NUMBERED_TAGS"):
             print(
                 f"ℹ️  Numbered test-tag enforcement skipped for {self._rel(requirements_file)} (set STRICT_TRACEABILITY_NUMBERED_TAGS=true to re-enable)."
@@ -387,24 +432,18 @@ class TraceabilityVerifier:
         return False
 
     def verify_repository_source_requirements_coverage(self) -> bool:
+        #R030: Every repository software file must be covered by a requirements doc.
+        #R055: The engine grants itself no coverage exemption (no exclude-source escape hatch).
         if self._env_flag_false("STRICT_TRACEABILITY_FULL_COVERAGE"):
             print(
                 "ℹ️  Repository software coverage check skipped (set STRICT_TRACEABILITY_FULL_COVERAGE=true to re-enable)."
             )
             return True
-        import os
 
-        excluded_path = Path(__file__)
-        wrapper_path = os.environ.get("TRACEABILITY_EXCLUDE_SOURCE")
-        if wrapper_path:
-            candidate = Path(wrapper_path)
-            if not candidate.is_absolute():
-                candidate = self.repo_root / candidate
-            excluded_path = candidate
-        all_sources = set(list_repository_software_files(self.repo_root, excluded_path=excluded_path))
+        all_sources = set(list_repository_software_files(self.repo_root))
         covered_sources: set[str] = set()
         for req_file in list_requirements_files(self.repo_root):
-            if self.is_requirements_only_mode(req_file):
+            if self._is_legitimate_requirements_only(req_file):
                 continue
             source_list = extract_source_files_from_requirements_path(req_file)
             if not source_list:
@@ -466,7 +505,37 @@ class TraceabilityVerifier:
         b = any(line.strip() == "## DO_NOT_MODIFY_THIS_FILE" for line in text.splitlines())
         return a and b
 
+    def _has_mappable_in_repo_source(self, requirements_file: Path) -> bool:
+        sources = extract_source_files_from_requirements_path(requirements_file)
+        if not sources:
+            sources = extract_source_files_from_analogous_tree(requirements_file, self.repo_root)
+        return any(self._to_repo_path(source).is_file() for source in sources)
+
+    def _is_legitimate_requirements_only(self, requirements_file: Path) -> bool:
+        # Requirements-only is only honest when there is genuinely no first-party
+        # in-repo source to map (e.g. a staged pre-implementation doc). If real
+        # source exists in this repo, the doc must be fully traced.
+        return self.is_requirements_only_mode(requirements_file) and not self._has_mappable_in_repo_source(requirements_file)
+
+    def _handle_requirements_only(self, requirements_file: Path) -> bool | None:
+        #R050: Requirements-only must not bypass enforcement for in-repo goldens.
+        # Returns True (legitimate skip), False (illegitimate -> fail), or None
+        # (not requirements-only -> continue normal enforcement).
+        if not self.is_requirements_only_mode(requirements_file):
+            return None
+        if self._has_mappable_in_repo_source(requirements_file):
+            print(
+                f"❌ FAIL (requirements-only-not-allowed): {self._rel(requirements_file)} declares "
+                "'Requirements-only mode: true' but has first-party in-repo source. Goldens must be "
+                "fully traced (real #Rxxx: source tags + tests with #Rxxx-Tnn). Requirements-only is "
+                "only for docs with no mappable in-repo source; cross-repo pointers use thin pointer docs."
+            )
+            return False
+        print(f"✅ PASS (requirements-only): {self._rel(requirements_file)} (no in-repo source; source/test traceability skipped)")
+        return True
+
     def is_requirements_only_mode(self, requirements_file: Path) -> bool:
+        #R025: Detect requirements-only docs that skip source/test traceability.
         in_scope = False
         for line in requirements_file.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
