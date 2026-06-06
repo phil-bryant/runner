@@ -78,13 +78,41 @@ require_file() {
   fi
 }
 
+# Environment-variable fallback for secret resolution. The db-profiles
+# "1psa_or_env_item" value (and the *_PSA_ITEM knobs) double as the env var name
+# that supplies the secret when 1Password is unreachable (rate limit, auth error,
+# offline, etc). Try the item name verbatim, then an uppercased variant. Emits
+# only the value on stdout.
+rb_lookup_env_fallback() {
+  local name="$1"
+  local upper
+  if [[ -n "${!name:-}" ]]; then
+    printf '%s' "${!name}"
+    return 0
+  fi
+  upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
+  if [[ "$upper" != "$name" && -n "${!upper:-}" ]]; then
+    printf '%s' "${!upper}"
+    return 0
+  fi
+  return 1
+}
+
+# Resolve a 1psa item, falling back to the matching environment variable when
+# 1psa cannot resolve it for ANY reason (missing CLI, timeout, rate limit / auth
+# error, not found). Only hard-fail when neither source yields a value.
 rb_read_1psa_item() {
   local item="$1"
   local timeout_seconds="${RB_ONEPSA_TIMEOUT_SECONDS:-12}"
   local output=""
   local exit_code=0
+  local env_value=""
   if ! command -v 1psa >/dev/null 2>&1; then
-    echo "❌ Missing required command: 1psa"
+    if env_value="$(rb_lookup_env_fallback "$item")"; then
+      printf '%s' "$env_value"
+      return 0
+    fi
+    echo "❌ Missing required command: 1psa (and no environment fallback for item: ${item})" >&2
     return 1
   fi
   set +e
@@ -108,15 +136,27 @@ PY
 )"
   exit_code=$?
   set -e
+  if [[ "$exit_code" -eq 0 ]]; then
+    printf '%s' "$output"
+    return 0
+  fi
+  # 1psa failed (timeout, rate limit, auth error, not found, ...). Try the
+  # environment-variable fallback before giving up.
+  if env_value="$(rb_lookup_env_fallback "$item")"; then
+    if [[ "$exit_code" -eq 124 ]]; then
+      echo "⚠️  1psa timed out after ${timeout_seconds}s for item: ${item}; using environment fallback" >&2
+    else
+      echo "⚠️  1psa could not resolve item: ${item}; using environment fallback" >&2
+    fi
+    printf '%s' "$env_value"
+    return 0
+  fi
   if [[ "$exit_code" -eq 124 ]]; then
-    echo "❌ 1psa timed out after ${timeout_seconds}s while resolving item: ${item}"
+    echo "❌ 1psa timed out after ${timeout_seconds}s while resolving item: ${item} (and no environment fallback found)" >&2
     return 1
   fi
-  if [[ "$exit_code" -ne 0 ]]; then
-    echo "❌ failed to resolve 1psa item: ${item}"
-    return 1
-  fi
-  printf '%s' "$output"
+  echo "❌ failed to resolve 1psa item: ${item} (and no environment fallback found)" >&2
+  return 1
 }
 
 print_tool_header() {
