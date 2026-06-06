@@ -6,6 +6,44 @@ sibling repos (`teller`, `classy`, `matchy`, `mailcart`) and the eggnest workspa
 
 For the design (dual-root model, layering, data flow) see [`Architecture.md`](Architecture.md).
 
+## Pre-release CI/CD Policy
+
+CI is **implemented but intentionally disabled for automatic runs** until the `v1.0` customer release. A GitHub
+Actions workflow exists at `.github/workflows/ci.yml`, but it is **manual-dispatch-only**
+(`on: workflow_dispatch`) — it does **not** trigger on `push`, `pull_request`, or `schedule`. Pre-release, the
+enforcement mechanism is the local numbered lanes (`tests/tNN_*.sh` + `./11_run_all_self_tests_parallel.sh`),
+not GitHub-hosted CI: this is a solo project and red X's on every push are noise rather than signal. The
+workflow runs the engine's Linux-portable self-run subset against `runner` itself (requirements traceability
+`t04` + shell unit `t05` (shellcheck + Bats over the shared goldens) + Python unit `t06`); the AV (`t01`),
+dependency-freshness (`t02`), SAST (`t03`), mutation (`t07`), fuzz (`t08`), DAST (`t09`), and FileVault (`t10`)
+lanes stay local. It is kept correct and manually runnable so it can be wired to `push`/`pull_request` as the
+project approaches `v1.0`. This matches the workspace-wide policy in
+[`teller`'s README](../teller/README.md#pre-release-cicd-policy).
+
+## Why this design holds together
+
+One engine, many repos. Runner keeps a single set of golden `NN_*.sh` lifecycle scripts and shared
+`tests/tNN_*.sh` lanes; the sibling repos own no copy of that logic. Each consuming repo ships only thin shims
+that delegate through a shared helper — resolve `RUNNER_HOME`, export their own `RUNBOOK_REPO_ROOT`, source the
+matching `config/runbook/<repo>.env` profile, and exec the mapped golden. The behavior lives in one place; the
+repos just point at it. That shape buys a few things that are genuinely pleasant to live with:
+
+- **Single source of truth, no forked shell.** There is exactly one golden engine. A pointer is a delegation
+  contract, not a copy of the logic, so a behavior fix lands once instead of in five repos.
+- **Profile-driven customization.** Per-repo differences (prereq mode, venv policy, pip bootstrap, orchestrator
+  mode, DAST target, lane selection) are declared in a small `.env`, never by editing the shell. teller runs the
+  full Postgres/ZAP stack, matchy stays Python/SAST-only, classy verifies prereqs and builds SQLCipher — same
+  goldens, different knobs.
+- **Contiguous, selectable lanes.** Shared lanes are numbered contiguously `t00`–`t10`. Each repo opts into the
+  subset it needs via `RUN_LANE_ALLOWLIST` in its profile, and `--no-ui` / `--no-mutation` / `--no-av` skip the
+  optional lanes on an ad-hoc run. Predictable numbering, no gaps to reason about.
+- **Upgrades propagate immediately.** Harden or fix a golden once and every repo that delegates into it picks up
+  the change on its next run — no fan-out edits, no version skew, minimal cross-repo drift.
+- **Secure by default.** `umask 007` and `set -euo pipefail` in every golden; no `rm` (destructive cleanup moves
+  to `~/.Trash`); secrets referenced by 1psa item *name*, never stored in profiles; a hash-pinned `pip` bootstrap
+  before installs; and a single-run orchestrator lock scoped per `RUNBOOK_REPO_ROOT`, so a run against one repo
+  never blocks a run against another.
+
 ## You run it from the sibling repo, not from here
 
 You almost never invoke runner directly. Each consuming repo keeps thin `NN_*.sh` operator pointers and
@@ -147,6 +185,31 @@ the golden (see [`Architecture.md`](Architecture.md#thin-pointer-pattern) for th
 - `shared/tests/sh/pointers/<repo>/*.bats`
 
 The `t04` lane runs this mapping so requirements, code, and tests stay in sync without per-repo wrapper copies.
+
+## Testing of Testing
+
+A test runner that nobody tests is just unverified infrastructure. Runner takes the less common step of testing
+the thing that runs the tests — we don't only run lanes, we prove the lane engine and its delegation contracts
+are sound.
+
+- **The engine runs green against itself (dogfooding).** `11_run_all_self_tests_parallel.sh` sets
+  `RUNBOOK_REPO_ROOT` to runner, sources `config/runbook/runner.env`, and execs the golden
+  `07_run_all_tests_parallel.sh` over runner's own `tests/tNN_*.sh`. It runs only the lanes that make sense for
+  the engine itself — the `RUN_LANE_ALLOWLIST` subset `t01` (AV), `t02` (dependency freshness), `t03` (static
+  security / SAST), `t04` (requirements traceability), and `t05` (shell unit) — so the orchestrator we ship to
+  every sibling repo has to pass its own gates first.
+- **Pointer→golden contract tests.** Each sibling pointer is pinned by a Bats contract under
+  `shared/tests/sh/pointers/<repo>/*.bats` that asserts the pointer sets `RUNBOOK_REPO_ROOT`, sources its
+  profile, and `exec`s the *correct* mapped golden. Renumbering or re-mapping a pointer can't silently desync
+  from its golden — the contract fails the lane loudly instead.
+- **Traceability of the test surface.** The `t04` requirements-traceability lane maps `#R###`-tagged tests back
+  to requirements (including the shared pointer roots), so a lane or pointer that loses its requirement linkage
+  shows up as a traceability failure, not a silent gap.
+- **Bats coverage of the goldens and lanes.** The shared shell-unit lane (`t05`, via `SHELL_BATS_ROOTS`) runs
+  Bats over the goldens and lane wrappers themselves, alongside the pointer contracts above.
+
+The angle is simple: before the engine gates a sibling repo, it has already gated itself, and every delegation
+edge into a golden is held to a contract.
 
 ## Constraints
 

@@ -1,0 +1,89 @@
+# =============================================================================
+# CI POLICY: INTENTIONALLY DISABLED FOR AUTO-RUNS (pre-release, solo dev).
+#
+# This workflow is manual-dispatch-only (`on: workflow_dispatch`). It does NOT
+# run on push, pull_request, or schedule. That is deliberate: until the project
+# approaches ~v1.0, the enforcement mechanism is the LOCAL numbered test lanes
+# (`./0N_*.sh` + `tests/tNN_*.sh`), not GitHub-hosted CI. The workflow is kept
+# present, correct, and manually runnable so it can simply be wired to
+# push/pull_request as we approach v1.0. Until then, nothing here auto-runs.
+#
+# See the "Pre-release CI/CD Policy" section in this repo's README.md.
+#
+# SCOPE (honest): `runner` is the shared golden engine that every sibling repo's
+# thin pointers delegate to. The highest-value, Linux-portable self-checks are
+# its shell/Python/traceability lanes. This workflow runs the engine's own
+# numbered goldens against itself (RUNNER_HOME == RUNBOOK_REPO_ROOT == this repo)
+# under the `runner` self-run profile (config/runbook/runner.env):
+#   - t04 requirements traceability (the pointer/requirements contract)
+#   - t05 shell unit tests (shellcheck + Bats over the shared shell goldens)
+#   - t06 Python unit tests
+# Intentionally EXCLUDED here (stay local honor-system): t00 code quality,
+# t01 AV (ClamAV), t02 dependency freshness, t03 SAST (semgrep/bandit/gitleaks),
+# t07 mutation, t08 fuzz, t09 DAST, t10 FileVault. The pointer-contract Bats
+# assets exercised by t05 are owned/edited by a separate worker; this workflow
+# only runs them, it does not modify them.
+# =============================================================================
+name: CI (manual, disabled pre-release) — runner
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  self-run-subset:
+    name: runner self-run Linux subset (t04/t05/t06)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      CI: "true"
+
+    steps:
+      - name: Checkout runner
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Linux test tools
+        run: sudo apt-get update && sudo apt-get install -y bats shellcheck
+
+      # Source the runner self-run profile so the lanes use the engine's own
+      # relaxed/self-scoped knobs (mirrors 11_run_all_self_tests_parallel.sh).
+      - name: Create venv and load requirements
+        run: |
+          export RUNBOOK_REPO_ROOT="$PWD"
+          # shellcheck source=/dev/null
+          source ./config/runbook/runner.env
+          ./02_create_venv.sh
+          source ./runner-venv/bin/activate
+          ./04_load_requirements.sh
+
+      - name: Requirements traceability (t04)
+        run: |
+          export RUNBOOK_REPO_ROOT="$PWD"
+          # shellcheck source=/dev/null
+          source ./config/runbook/runner.env
+          source ./runner-venv/bin/activate
+          ./tests/t04_run_requirements_traceability_tests.sh
+
+      - name: Shell unit tests (t05, shellcheck + Bats)
+        run: |
+          export RUNBOOK_REPO_ROOT="$PWD"
+          # shellcheck source=/dev/null
+          source ./config/runbook/runner.env
+          source ./runner-venv/bin/activate
+          ./tests/t05_run_shell_unit_tests.sh
+
+      - name: Python unit tests (t06)
+        run: |
+          export RUNBOOK_REPO_ROOT="$PWD"
+          # shellcheck source=/dev/null
+          source ./config/runbook/runner.env
+          source ./runner-venv/bin/activate
+          ./tests/t06_run_python_unit_tests.sh
