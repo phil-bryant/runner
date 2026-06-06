@@ -97,12 +97,56 @@ rb_repo_python() {
   command -v python3
 }
 
-#R042: Environment-variable fallback for secret resolution. The db-profiles
-# "1psa_or_env_item" value (and the *_PSA_ITEM knobs) double as the env var name
+#R042: Environment/.env fallback for secret resolution. The db-profiles
+# "1psa_or_env_item" value (and the *_PSA_ITEM knobs) double as the env var key
 # that supplies the secret when 1Password is unreachable (rate limit, auth error,
 # offline, etc). Try the item name verbatim, then an uppercased variant so that
 # lowercase defaults like "localhost_postgres_teller" also resolve from
 # LOCALHOST_POSTGRES_TELLER. Emits only the value on stdout.
+rb_lookup_dotenv_key() {
+  local key="$1"
+  local dotenv_path="${RB_ENV_FALLBACK_FILE:-${HOME}/.env}"
+  local value=""
+  [[ -r "$dotenv_path" ]] || return 1
+  set +e
+  value="$(python3 - <<'PY' "$dotenv_path" "$key"
+from pathlib import Path
+import sys
+
+dotenv_path = Path(sys.argv[1])
+target_key = sys.argv[2]
+
+try:
+    text = dotenv_path.read_text(encoding="utf-8", errors="replace")
+except OSError:
+    raise SystemExit(1)
+
+for raw_line in text.splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith("#"):
+        continue
+    if line.startswith("export "):
+        line = line[7:].lstrip()
+    if "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    if key.strip() != target_key:
+        continue
+    print(value.strip())
+    raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+)"
+  local status=$?
+  set -e
+  if [[ "$status" -eq 0 ]]; then
+    printf '%s' "$value"
+    return 0
+  fi
+  return 1
+}
+
 rb_lookup_env_fallback() {
   local name="$1"
   local upper
@@ -113,6 +157,12 @@ rb_lookup_env_fallback() {
   upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
   if [[ "$upper" != "$name" && -n "${!upper:-}" ]]; then
     printf '%s' "${!upper}"
+    return 0
+  fi
+  if rb_lookup_dotenv_key "$name"; then
+    return 0
+  fi
+  if [[ "$upper" != "$name" ]] && rb_lookup_dotenv_key "$upper"; then
     return 0
   fi
   return 1
@@ -128,6 +178,7 @@ rb_read_1psa_item() {
   local output=""
   local exit_code=0
   local env_value=""
+  local onepsa_empty=false
   if ! command -v 1psa >/dev/null 2>&1; then
     if env_value="$(rb_lookup_env_fallback "$item")"; then
       printf '%s' "$env_value"
@@ -157,15 +208,21 @@ PY
 )"
   exit_code=$?
   set -e
-  if [[ "$exit_code" -eq 0 ]]; then
+  if [[ "$exit_code" -eq 0 && -n "$output" ]]; then
     printf '%s' "$output"
     return 0
+  fi
+  if [[ "$exit_code" -eq 0 && -z "$output" ]]; then
+    onepsa_empty=true
+    exit_code=125
   fi
   # 1psa failed (timeout, rate limit, auth error, not found, ...). Try the
   # environment-variable fallback before giving up.
   if env_value="$(rb_lookup_env_fallback "$item")"; then
     if [[ "$exit_code" -eq 124 ]]; then
       rb_warn "1psa timed out after ${timeout_seconds}s for item: ${item}; using environment fallback" >&2
+    elif [[ "$onepsa_empty" == "true" ]]; then
+      rb_warn "1psa returned an empty value for item: ${item}; using environment fallback" >&2
     else
       rb_warn "1psa could not resolve item: ${item}; using environment fallback" >&2
     fi
@@ -174,6 +231,10 @@ PY
   fi
   if [[ "$exit_code" -eq 124 ]]; then
     rb_err "1psa timed out after ${timeout_seconds}s while resolving item: ${item} (and no environment fallback found)"
+    return 1
+  fi
+  if [[ "$onepsa_empty" == "true" ]]; then
+    rb_err "1psa returned an empty value for item: ${item} (and no environment fallback found)"
     return 1
   fi
   rb_err "failed to resolve 1psa item: ${item} (and no environment fallback found)"

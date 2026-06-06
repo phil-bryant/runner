@@ -21,6 +21,7 @@ export_test_cache_env "$RUNBOOK_REPO_ROOT"
 SKIP_UI_REGRESSION=false
 SKIP_MUTATION_LANE=false
 SKIP_AV_LANE=false
+SERIALIZE_UI_MUTATION=false
 #R065: Match the UI-regression lane by content (renumber-safe), not a hardcoded NN_ name.
 UI_REGRESSION_PATTERN="${UI_REGRESSION_PATTERN:-macos_ui_regression}"
 MUTATION_LANE_PATTERN="${MUTATION_LANE_PATTERN:-mutation_tests}"
@@ -33,6 +34,7 @@ Options:
   --no-ui     Skip the macOS UI regression lane (any *${UI_REGRESSION_PATTERN}* script).
   --no-mutation Skip the mutation lane (any *${MUTATION_LANE_PATTERN}* script).
   --no-av     Skip the AV lane (any *${AV_LANE_PATTERN}* script).
+  --serialize-ui-mutation  If both lanes are selected, run UI first and defer mutation until UI completes.
   -h, --help  Show this help and exit.
 USAGE
 }
@@ -48,6 +50,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-av)
       SKIP_AV_LANE=true
+      shift
+      ;;
+    --serialize-ui-mutation)
+      SERIALIZE_UI_MUTATION=true
       shift
       ;;
     -h|--help)
@@ -154,6 +160,40 @@ if [[ "$SKIP_UI_REGRESSION" == "true" || "$SKIP_MUTATION_LANE" == "true" || "$SK
   done
 fi
 export PARALLEL_CHECKS_SKIPPED_LANES="$SKIPPED_LANES"
+
+ALL_CHECKS=("${CHECKS[@]}")
+INITIAL_LAUNCH_CHECKS=("${CHECKS[@]}")
+DEFERRED_MUTATION_CHECKS=()
+SERIALIZE_UI_MUTATION_ACTIVE=false
+SERIALIZE_UI_LANE=""
+deferred_mutation_launched=false
+if [[ "$SERIALIZE_UI_MUTATION" == "true" ]]; then
+  local_ui_candidates=()
+  local_mutation_candidates=()
+  for candidate_script in "${CHECKS[@]}"; do
+    if [[ "$candidate_script" == *"$UI_REGRESSION_PATTERN"* ]]; then
+      local_ui_candidates+=("$candidate_script")
+    fi
+    if [[ "$candidate_script" == *"$MUTATION_LANE_PATTERN"* ]]; then
+      local_mutation_candidates+=("$candidate_script")
+    fi
+  done
+  if [[ "${#local_ui_candidates[@]}" -gt 0 && "${#local_mutation_candidates[@]}" -gt 0 ]]; then
+    SERIALIZE_UI_MUTATION_ACTIVE=true
+    SERIALIZE_UI_LANE="${local_ui_candidates[0]}"
+    INITIAL_LAUNCH_CHECKS=()
+    for candidate_script in "${CHECKS[@]}"; do
+      if [[ "$candidate_script" == *"$MUTATION_LANE_PATTERN"* ]]; then
+        DEFERRED_MUTATION_CHECKS+=("$candidate_script")
+      else
+        INITIAL_LAUNCH_CHECKS+=("$candidate_script")
+      fi
+    done
+    echo "ℹ️  --serialize-ui-mutation: running ${SERIALIZE_UI_LANE} first; deferring ${#DEFERRED_MUTATION_CHECKS[@]} mutation lane(s) until UI lane completes."
+  else
+    echo "ℹ️  --serialize-ui-mutation: no-op because both UI and mutation lanes are not selected together."
+  fi
+fi
 
 #R040: Remain a standalone meta-runner; child check scripts must not invoke this script.
 
@@ -417,14 +457,14 @@ print_cleanup_provenance() {
   awk 'END { if (NR > 0) { print "     " $0; } }' "$cleanup_file"
 }
 
-for script in "${CHECKS[@]}"; do
+for script in "${ALL_CHECKS[@]}"; do
   if [[ ! -f "${CHECKS_DIR}/${script}" ]]; then
     echo "❌ FAIL: expected check script not found: ${CHECKS_DIR}/${script}" >&2
     exit 1
   fi
 done
 
-echo "▶ Starting parallel checks (${#CHECKS[@]} scripts)..."
+echo "▶ Starting parallel checks (${#ALL_CHECKS[@]} scripts)..."
 
 #R060: Record orchestrator wall-clock start for long-pole timing.
 run_start_epoch="$(date +%s)"
@@ -504,16 +544,9 @@ run_lane_worker() {
 export -f run_lane_worker
 export CHECKS_DIR REPORT_DIR SCRIPT_DIR
 
-#R025: Open a completion FIFO so lanes report the instant they finish (no exit-file polling races).
-COMPLETION_FIFO="${REPORT_DIR}/.completion.fifo"
-safe_move_to_trash "$COMPLETION_FIFO"
-mkfifo "$COMPLETION_FIFO"
-exec 3<>"$COMPLETION_FIFO"
-
-#R015: Launch all check scripts concurrently, each in its own session.
-#R020: Capture each child exit code independently.
-for script in "${CHECKS[@]}"; do
-  log="${REPORT_DIR}/${script%.sh}.log"
+launch_check_script() {
+  local script="$1"
+  local log="${REPORT_DIR}/${script%.sh}.log"
   safe_move_to_trash "${log}"
   safe_move_to_trash "${log}.exit"
   safe_move_to_trash "${log}.start"
@@ -523,6 +556,18 @@ for script in "${CHECKS[@]}"; do
   run_in_new_session bash -c 'run_lane_worker "$0"' "$script" &
   child_pids+=("$!")
   child_scripts+=("$script")
+}
+
+#R025: Open a completion FIFO so lanes report the instant they finish (no exit-file polling races).
+COMPLETION_FIFO="${REPORT_DIR}/.completion.fifo"
+safe_move_to_trash "$COMPLETION_FIFO"
+mkfifo "$COMPLETION_FIFO"
+exec 3<>"$COMPLETION_FIFO"
+
+#R015: Launch all check scripts concurrently, each in its own session.
+#R020: Capture each child exit code independently.
+for script in "${INITIAL_LAUNCH_CHECKS[@]}"; do
+  launch_check_script "$script"
 done
 
 if [[ "${PARALLEL_CHECKS_TEST_INTERRUPT:-}" == "1" ]]; then
@@ -533,7 +578,7 @@ fi
 pass_count=0
 fail_count=0
 aggregate_test_count=0
-total="${#CHECKS[@]}"
+total="${#ALL_CHECKS[@]}"
 reported=0
 reported_scripts=()
 
@@ -577,12 +622,19 @@ record_check_result() {
     print_failure_excerpt "$log"
     fail_count=$((fail_count + 1))
   fi
+  if [[ "$SERIALIZE_UI_MUTATION_ACTIVE" == "true" && "$deferred_mutation_launched" != "true" && "$completed_script" == "$SERIALIZE_UI_LANE" ]]; then
+    deferred_mutation_launched=true
+    emit_result_line "ℹ️  --serialize-ui-mutation: ${SERIALIZE_UI_LANE} completed; launching deferred mutation lane(s)."
+    for deferred_script in "${DEFERRED_MUTATION_CHECKS[@]}"; do
+      launch_check_script "$deferred_script"
+    done
+  fi
 }
 
 #R025: Recover completions from on-disk exit files if a FIFO message is ever missed.
 recover_missing_completions() {
   local script="" exit_file=""
-  for script in "${CHECKS[@]}"; do
+  for script in "${ALL_CHECKS[@]}"; do
     exit_file="${REPORT_DIR}/${script%.sh}.log.exit"
     if [[ -f "$exit_file" ]]; then
       record_check_result "$script" "$(<"$exit_file")"
@@ -592,7 +644,7 @@ recover_missing_completions() {
 
 all_checks_have_exit_files() {
   local script="" exit_file=""
-  for script in "${CHECKS[@]}"; do
+  for script in "${ALL_CHECKS[@]}"; do
     exit_file="${REPORT_DIR}/${script%.sh}.log.exit"
     if [[ ! -f "$exit_file" ]]; then
       return 1
