@@ -198,6 +198,35 @@ wait_for_http() {
   done
 }
 
+wait_for_http_non_5xx() {
+  local url="$1"
+  local timeout_seconds="${2:-60}"
+  local watch_pid="${3:-}"
+  local curl_args=(-sS -o /dev/null -w '%{http_code}')
+  local https_localhost_pattern='^https://(localhost|127\.0\.0\.1|\[::1\]|[A-Za-z0-9.-]+\.localhost)(:[0-9]+)?($|/)'
+  if [[ "$url" =~ $https_localhost_pattern ]]; then
+    curl_args+=(-k)
+  fi
+  local start_ts
+  start_ts="$(date +%s)"
+  while true; do
+    if [[ -n "$watch_pid" ]] && ! kill -0 "$watch_pid" >/dev/null 2>&1; then
+      echo "❌ Process ${watch_pid} exited before ${url} became ready."
+      return 1
+    fi
+    local http_code="000"
+    http_code="$(curl "${curl_args[@]}" "$url" 2>/dev/null || true)"
+    if [[ "$http_code" =~ ^[0-9]{3}$ ]] && [[ "$http_code" != "000" ]] && (( 10#$http_code < 500 )); then
+      return 0
+    fi
+    if (( "$(date +%s)" - start_ts >= timeout_seconds )); then
+      echo "❌ Timed out waiting for non-5xx response from ${url} (last status: ${http_code})"
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 is_tcp_port_in_use() {
   # Detect occupied localhost ports before binding DAST API or ZAP quick-scan proxy.
   local host="$1"
@@ -308,7 +337,7 @@ run_zap_quick_scan() {
       return 0
     fi
     echo "❌ OWASP ZAP quick scan failed."
-    exit 1
+    return 1
   fi
 }
 
@@ -1139,6 +1168,10 @@ PY
     classifier_api_pid="$!"
   fi
   wait_for_http "${base_url}/health" 45 "$classifier_api_pid"
+  local readiness_probe_url="${DAST_READY_PROBE_URL:-${base_url}/v1/categories}"
+  local readiness_timeout="${DAST_READY_TIMEOUT_SECONDS:-90}"
+  echo "▶ Waiting for DAST readiness probe at ${readiness_probe_url}"
+  wait_for_http_non_5xx "${readiness_probe_url}" "${readiness_timeout}" "$classifier_api_pid"
 
   # Run Schemathesis and ZAP quick scans with configurable targets and gating.
   if [[ "$run_schemathesis" == "true" ]]; then
@@ -1285,7 +1318,7 @@ PY
       zap_quick_proxy_port="$resolved_quick_port"
       echo "⚠️  ZAP_QUICK_PROXY_PORT ${requested_quick_port} is already in use; auto-selected ${zap_quick_proxy_port}."
     fi
-    run_zap_quick_scan \
+    if ! run_zap_quick_scan \
       "$zap_cli_cmd" \
       "$zap_quick_home_dir" \
       "$zap_quiet" \
@@ -1293,7 +1326,28 @@ PY
       "${report_dir_abs}/zap-classification.html" \
       "${report_dir_abs}/zap-classification.log" \
       "$zap_quick_proxy_host" \
-      "$zap_quick_proxy_port"
+      "$zap_quick_proxy_port"; then
+      if grep -qi "Address already in use" "${report_dir_abs}/zap-classification.log"; then
+        local retry_port=""
+        if ! retry_port="$(find_available_tcp_port "$zap_quick_proxy_host" "$((zap_quick_proxy_port + 1))" 100)"; then
+          echo "❌ OWASP ZAP quick scan failed and no alternate proxy port was available."
+          exit 1
+        fi
+        echo "⚠️  ZAP proxy port ${zap_quick_proxy_port} became unavailable at startup; retrying quick scan on ${retry_port}."
+        zap_quick_proxy_port="$retry_port"
+        run_zap_quick_scan \
+          "$zap_cli_cmd" \
+          "$zap_quick_home_dir" \
+          "$zap_quiet" \
+          "$zap_classification_target" \
+          "${report_dir_abs}/zap-classification.html" \
+          "${report_dir_abs}/zap-classification.log" \
+          "$zap_quick_proxy_host" \
+          "$zap_quick_proxy_port" || exit 1
+      else
+        exit 1
+      fi
+    fi
     #R030: Parse ZAP HTML output into machine-readable severity totals for gate enforcement.
     summarize_zap_html_report \
       "${report_dir_abs}/zap-classification.html" \

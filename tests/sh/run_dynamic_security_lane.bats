@@ -36,6 +36,16 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "dynamic lane waits for a non-5xx readiness probe after health" {
+  #R013-T01: Verify readiness gating waits for non-5xx endpoint responses before Schemathesis.
+  run grep -q 'wait_for_http_non_5xx()' "$SRC"
+  [ "$status" -eq 0 ]
+  run grep -q 'DAST_READY_PROBE_URL' "$SRC"
+  [ "$status" -eq 0 ]
+  run grep -q 'Waiting for DAST readiness probe' "$SRC"
+  [ "$status" -eq 0 ]
+}
+
 @test "dynamic lane defaults to DAST-on, SAST-off" {
   #R015-T01: Verify the RUN_DAST/RUN_SAST default toggles.
   run grep -q 'RUN_DAST="${RUN_DAST:-true}"' "$SRC"
@@ -69,6 +79,14 @@ setup() {
   run grep -q 'SECURITY_ZAP_FAIL_THRESHOLD' "$SRC"
   [ "$status" -eq 0 ]
   run grep -q 'meet/exceed threshold' "$SRC"
+  [ "$status" -eq 0 ]
+}
+
+@test "dynamic lane retries ZAP quick scan on proxy bind races" {
+  #R031-T01: Verify ZAP quick scan retries on Address already in use proxy startup errors.
+  run grep -q 'Address already in use' "$SRC"
+  [ "$status" -eq 0 ]
+  run grep -q 'retrying quick scan on' "$SRC"
   [ "$status" -eq 0 ]
 }
 
