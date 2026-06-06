@@ -135,6 +135,23 @@ EOF
   [ "$output" = "6" ]
 }
 
+@test "macOS UI regression lane parses XCTest executed summary totals" {
+  #R018-T04: Verify macOS UI regression output with XCTest summaries uses the executed test total.
+  log_file="${TEST_REPO}/artifacts/parallel/t12-ui-xctest.log"
+  cat > "$log_file" <<'EOF'
+Test Suite 'MailcartUITests' passed at 2026-06-06 07:47:18.027.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 54.619 (54.624) seconds
+Test Suite 'MailcartUITests.xctest' passed at 2026-06-06 07:47:18.028.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 54.619 (54.624) seconds
+Test Suite 'All tests' passed at 2026-06-06 07:47:18.028.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 54.619 (54.625) seconds
+EOF
+
+  run_count "t12_run_macos_ui_regression_tests.sh" "$log_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = "7" ]
+}
+
 @test "macOS UI regression lane falls back to one when unparseable" {
   #R030-T03: Verify macOS UI regression logs with no scenario hints still use the single-test fallback.
   log_file="${TEST_REPO}/artifacts/parallel/t11-ui-unparseable.log"

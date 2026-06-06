@@ -64,6 +64,39 @@ class CheckDependencyFreshnessTests(unittest.TestCase):
         self.assertIn("requests", text)
         self.assertIn("transitive", text)
 
+    def test_make_report_orders_constrained_before_actionable(self) -> None:
+        #R015-T01: Verify report package ordering places constrained entries before actionable entries, even when update severity would otherwise put actionable entries first.
+        with tempfile.TemporaryDirectory() as tmp:
+            req_path = Path(tmp) / "requirements.txt"
+            req_path.write_text("alpha==1.0.0\nzeta==1.0.0\n", encoding="utf-8")
+            original_outdated = self.module.run_outdated_list
+            original_constraints = self.module._collect_reverse_dependency_constraints
+            original_actionability = self.module._evaluate_actionability
+            self.module.run_outdated_list = lambda: [
+                {"name": "zeta", "version": "1.0.0", "latest_version": "2.0.0"},
+                {"name": "alpha", "version": "1.0.0", "latest_version": "1.0.1"},
+            ]
+            self.module._collect_reverse_dependency_constraints = lambda: {}
+            self.module._evaluate_actionability = (
+                lambda latest_version, _required_by: ("constrained", False)
+                if latest_version == "1.0.1"
+                else ("actionable", True)
+            )
+            try:
+                report = self.module.make_report(req_path)
+            finally:
+                self.module.run_outdated_list = original_outdated
+                self.module._collect_reverse_dependency_constraints = original_constraints
+                self.module._evaluate_actionability = original_actionability
+        self.assertEqual(
+            [item["name"] for item in report["packages"]],
+            ["alpha", "zeta"],
+        )
+        self.assertEqual(
+            [item["outdated_actionability"] for item in report["packages"]],
+            ["constrained", "actionable"],
+        )
+
     def test_main_fails_for_configured_gates(self) -> None:
         #R010-T01: Verify each gate independently returns a failing exit status only when its configured condition is present.
         with tempfile.TemporaryDirectory() as tmp:

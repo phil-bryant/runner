@@ -144,7 +144,7 @@ def _parse_numeric_selector_count(selector: str) -> int | None:
 
 
 #R018: macOS UI regression lane count prefers explicit scenario summary output,
-# then falls back to the selected-step selector in log/artifact output.
+# then selected-step selector hints, then XCTest `Executed N tests` summaries.
 def _parse_macos_ui_regression_total(log_text: str, repo_root: Path) -> int | None:
     summary_match = re.search(r"(?im)scenarios\s+total:\s*.*?\bover\s+(\d+)\s+scenarios?\b", log_text)
     if summary_match is not None:
@@ -155,6 +155,10 @@ def _parse_macos_ui_regression_total(log_text: str, repo_root: Path) -> int | No
         selector_count = _parse_numeric_selector_count(selector_match.group(1))
         if selector_count is not None:
             return selector_count
+
+    swift_xctest_total = _parse_swift_xctest_total(log_text)
+    if swift_xctest_total is not None:
+        return swift_xctest_total
 
     steps_selector = _read_text(repo_root / "artifacts/macos-ui-regression/xcuitest-steps.env")
     return _parse_numeric_selector_count(steps_selector)

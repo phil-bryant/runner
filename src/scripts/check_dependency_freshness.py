@@ -2,6 +2,7 @@
 #R001: Parse requirements pins and classify outdated dependency update types.
 #R005: Emit JSON/text freshness reports with direct/transitive metadata.
 #R010: Enforce optional actionable/major/direct-outdated/venv-cruft failure gates.
+#R015: Print constrained outdated entries before actionable entries.
 """Generate dependency freshness reports for direct and transitive packages."""
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ except Exception:  # pragma: no cover - fallback if packaging is unavailable
 
 
 UPDATE_ORDER = {"major": 0, "minor": 1, "patch": 2, "unknown": 3}
+ACTIONABILITY_ORDER = {"constrained": 0, "unknown": 1, "actionable": 2}
 INSTALLER_TOOLCHAIN_ALLOWLIST = {"pip", "setuptools", "wheel"}
 
 
@@ -346,7 +348,13 @@ def make_report(
         if item is not None:
             packages.append(item)
 
-    packages.sort(key=lambda item: (UPDATE_ORDER.get(item["update_type"], 99), item["name"].lower()))
+    packages.sort(
+        key=lambda item: (
+            ACTIONABILITY_ORDER.get(str(item.get("outdated_actionability", "unknown")), 1),
+            UPDATE_ORDER.get(item["update_type"], 99),
+            item["name"].lower(),
+        )
+    )
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),

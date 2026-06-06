@@ -34,3 +34,8 @@ R010  Statement: Enforce optional freshness gates for actionable outdated packag
 Design: Return non-zero when `--fail-on-any-actionable-outdated` detects actionable outdated packages under current parent constraints, when `--fail-on-major` detects major updates, when `--fail-on-direct-outdated` detects outdated packages referenced by direct requirement sources (`requirements.in` by default, optional `--direct-requirements` override), or when `--fail-on-venv-cruft` detects requested packages not declared in `requirements.txt`. An optional `--venv-cruft-allow` list may exempt editable sibling packages from the cruft gate without weakening direct freshness enforcement.
 Tests:
 - R010-T01: Verify each gate independently returns a failing exit status only when its configured condition is present.
+
+R015  Statement: Print constrained outdated entries before actionable outdated entries in dependency freshness reports.
+Design: Sort per-package report rows by actionability group so all `constrained` entries are listed first and `actionable` entries are listed last; retain existing deterministic ordering within each group.
+Tests:
+- R015-T01: Verify report package ordering places constrained entries before actionable entries, even when update severity would otherwise put actionable entries first.
