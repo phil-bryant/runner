@@ -39,3 +39,23 @@ R015  Statement: Print constrained outdated entries before actionable outdated e
 Design: Sort per-package report rows by actionability group so all `constrained` entries are listed first and `actionable` entries are listed last; retain existing deterministic ordering within each group.
 Tests:
 - R015-T01: Verify report package ordering places constrained entries before actionable entries, even when update severity would otherwise put actionable entries first.
+
+R030  Statement: Parse dependency requirement inputs and normalize package identity.
+Design: Parse requirements and direct-requirements sources, normalize package names, and convert version strings into comparable triplets for downstream freshness evaluation.
+Tests:
+- R030-T01: Verify requirement parsing normalizes package names and captures pinned metadata from mixed requirement lines (`tests/py/test_check_dependency_freshness.py`).
+
+R035  Statement: Fetch and normalize outdated dependency entries from tooling output.
+Design: Execute outdated-package discovery and normalize pip output rows into stable package entries for report generation.
+Tests:
+- R035-T01: Verify outdated list parsing returns normalized package rows from pip JSON output (`tests/py/test_check_dependency_freshness.py`).
+
+R040  Statement: Classify update severity and evaluate actionability gates.
+Design: Classify updates by semantic magnitude and evaluate actionability/constrained state, including venv cruft classification behavior.
+Tests:
+- R040-T01: Verify update classification and actionability evaluation distinguish actionable and constrained outcomes (`tests/py/test_check_dependency_freshness.py`).
+
+R045  Statement: Build report summaries and enforce CLI gate behavior.
+Design: Aggregate summary counters, render report text, and return gate-driven non-zero exits when configured freshness checks fail.
+Tests:
+- R045-T01: Verify report rendering and CLI gate exits reflect summary outcomes and configured failure flags (`tests/py/test_check_dependency_freshness.py`).

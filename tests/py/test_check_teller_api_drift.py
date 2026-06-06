@@ -3,12 +3,14 @@
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 
+#R001: shard-3 function tag
 def load_module():
     repo_root = Path(__file__).resolve().parents[2]
     script_path = repo_root / "src" / "scripts" / "check_teller_api_drift.py"
@@ -21,6 +23,7 @@ def load_module():
 
 
 class ResolveCredentialsTests(unittest.TestCase):
+    #R001: shard-3 function tag
     def setUp(self) -> None:
         self.module = load_module()
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -28,6 +31,7 @@ class ResolveCredentialsTests(unittest.TestCase):
         self.teller_dir = Path(self.temp_dir.name)
         self.module.HOME_TELLER_DIR = self.teller_dir
 
+    #R001: shard-3 function tag
     def _write_token(self, filename: str, token: str) -> None:
         payload = {"current": token}
         (self.teller_dir / filename).write_text(json.dumps(payload), encoding="utf-8")
@@ -99,8 +103,55 @@ class ResolveCredentialsTests(unittest.TestCase):
         self.assertIn("token missing", text)
         self.assertIn("[pass] doc:accounts.md", text)
 
+    def test_resolve_credentials_selects_token(self) -> None:
+        #R030-T01: Verify credential resolution selects the expected local token candidate and metadata when multiple token sources exist (`tests/py/test_check_teller_api_drift.py`).
+        self._write_token("auth_token_chase.json", "token-chase")
+        self._write_token("auth_token_fabt.json", "token-fabt")
+        creds = self.module.resolve_credentials(institution_id="chase")
+        self.assertEqual(creds["token"], "token-chase")
+        self.assertEqual(creds["token_source"], "chase")
+
+    def test_live_canary_detects_drift(self) -> None:
+        #R035-T01: Verify live canary checks mark drift failures when endpoint checks return non-200 responses (`tests/py/test_check_teller_api_drift.py`).
+        cert_path = self.teller_dir / "certificate.pem"
+        key_path = self.teller_dir / "private_key.pem"
+        cert_path.write_text("cert", encoding="utf-8")
+        key_path.write_text("key", encoding="utf-8")
+
+        class FakeRequestException(Exception):
+            pass
+
+        class FakeResponse:
+            status_code = 500
+            text = "drift"
+
+        fake_requests = type(
+            "FakeRequests",
+            (),
+            {
+                "RequestException": FakeRequestException,
+                "get": staticmethod(lambda *_args, **_kwargs: FakeResponse()),
+            },
+        )
+
+        with patch.dict(sys.modules, {"requests": fake_requests}):
+            with patch.dict(
+                os.environ,
+                {
+                    "TELLER_CERT_PATH": str(cert_path),
+                    "TELLER_KEY_PATH": str(key_path),
+                    "TELLER_ACCESS_TOKEN": "token-live",
+                },
+                clear=False,
+            ):
+                result = self.module.run_live_canary(timeout_seconds=1)
+        self.assertEqual(result["mode"], "live")
+        self.assertEqual(result["status"], "fail")
+        self.assertTrue(any(check["status"] == "fail" for check in result["checks"]))
+
 
 class MainExitPolicyTests(unittest.TestCase):
+    #R001: shard-3 function tag
     def setUp(self) -> None:
         self.module = load_module()
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -143,8 +194,29 @@ class MainExitPolicyTests(unittest.TestCase):
                 exit_code = self.module.main()
         self.assertEqual(exit_code, 1)
 
+    def test_report_and_cli_gate(self) -> None:
+        #R045-T01: Verify CLI report generation and gate exits return expected status for warning/failure scenarios (`tests/py/test_check_teller_api_drift.py`).
+        args = [
+            "check_teller_api_drift.py",
+            "--output-json",
+            str(self.report_dir / "fail.json"),
+            "--output-text",
+            str(self.report_dir / "fail.txt"),
+        ]
+        with patch.object(
+            self.module,
+            "run_live_canary",
+            return_value={"mode": "live", "status": "fail", "checks": [{"name": "institutions", "status": "fail"}], "warnings": []},
+        ), patch.object(os, "umask", return_value=0):
+            with patch("sys.argv", args):
+                exit_code = self.module.main()
+        self.assertEqual(exit_code, 1)
+        self.assertTrue((self.report_dir / "fail.json").exists())
+        self.assertTrue((self.report_dir / "fail.txt").exists())
+
 
 class FallbackSourcePathTests(unittest.TestCase):
+    #R001: shard-3 function tag
     def setUp(self) -> None:
         self.module = load_module()
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -154,6 +226,7 @@ class FallbackSourcePathTests(unittest.TestCase):
         os.chdir(self.repo_root)
         self.addCleanup(lambda: os.chdir(self.original_cwd))
 
+    #R001: shard-3 function tag
     def _write_fallback_docs(self) -> None:
         docs_dir = self.repo_root / "docs" / "teller-api-reference"
         docs_dir.mkdir(parents=True, exist_ok=True)
@@ -164,6 +237,7 @@ class FallbackSourcePathTests(unittest.TestCase):
         ):
             (docs_dir / filename).write_text("# ok\n", encoding="utf-8")
 
+    #R001: shard-3 function tag
     def _write_static_source_files(self) -> None:
         markers = "INSTITUTIONS='/institutions'\nACCOUNTS='/accounts'\nIDENTITY='/identity'\n"
         swift_dir = self.repo_root / "src" / "macos-ui" / "Sources" / "TransactionClassifier"
@@ -173,6 +247,7 @@ class FallbackSourcePathTests(unittest.TestCase):
         (self.repo_root / "06_run_classification_macos_ui.sh").write_text(markers, encoding="utf-8")
         (self.repo_root / "07_fetch_teller_api_data.py").write_text(markers, encoding="utf-8")
 
+    #R001: shard-3 function tag
     def test_fallback_checks_pass_when_static_source_files_present_with_markers(self) -> None:
         self._write_fallback_docs()
         self._write_static_source_files()
@@ -182,6 +257,7 @@ class FallbackSourcePathTests(unittest.TestCase):
         self.assertEqual(len(source_checks), 4)
         self.assertTrue(all(check["status"] == "pass" for check in source_checks))
 
+    #R001: shard-3 function tag
     def test_fallback_checks_fail_when_static_source_file_missing(self) -> None:
         self._write_fallback_docs()
         report = self.module.run_fallback_checks()
@@ -189,6 +265,13 @@ class FallbackSourcePathTests(unittest.TestCase):
         source_checks = [check for check in report["checks"] if check["name"].startswith("source:")]
         self.assertEqual(len(source_checks), 4)
         self.assertTrue(any(check["status"] == "fail" for check in source_checks))
+
+    def test_fallback_when_live_unavailable(self) -> None:
+        #R040-T01: Verify fallback mode returns expected warning/failure status when live execution prerequisites are unavailable (`tests/py/test_check_teller_api_drift.py`).
+        report = self.module._fallback_live_result("requests missing")
+        self.assertEqual(report["mode"], "fallback")
+        self.assertEqual(report["status"], "warn")
+        self.assertIn("requests missing", report["warnings"])
 
 
 if __name__ == "__main__":

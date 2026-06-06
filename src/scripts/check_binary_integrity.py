@@ -38,10 +38,12 @@ class BinaryPolicy:
 
 
 def _normalize_hex_digest(value: str) -> str:
+    #R030: Normalize hex digest to canonical comparable form.
     return value.strip().lower()
 
 
 def _parse_binary_policy(entry: dict[str, Any], index: int) -> BinaryPolicy:
+    #R035: Parse binary policy manifest entries into validated typed records.
     identifier = str(entry.get("id") or entry.get("name") or f"binary-{index}").strip()
     command = str(entry.get("command", "")).strip()
     if not command:
@@ -67,6 +69,7 @@ def _parse_binary_policy(entry: dict[str, Any], index: int) -> BinaryPolicy:
 
 
 def load_policy(path: Path) -> list[BinaryPolicy]:
+    #R035: Load and validate binary policy manifest entries.
     payload = json.loads(path.read_text(encoding="utf-8"))
     binaries = payload.get("binaries")
     if not isinstance(binaries, list):
@@ -80,6 +83,7 @@ def load_policy(path: Path) -> list[BinaryPolicy]:
 
 
 def resolve_executable(command: str) -> str | None:
+    #R040: Resolve executable path for configured binary command checks.
     if os.path.sep in command:
         path = Path(command).expanduser()
         if path.exists() and os.access(path, os.X_OK):
@@ -92,6 +96,7 @@ def resolve_executable(command: str) -> str | None:
 
 
 def run_version_probe(executable_path: str, version_args: tuple[str, ...]) -> tuple[str | None, str | None]:
+    #R040: Run binary version probe command and capture normalized result.
     cmd = [executable_path, *version_args]
     try:
         result = subprocess.run(
@@ -115,6 +120,7 @@ def run_version_probe(executable_path: str, version_args: tuple[str, ...]) -> tu
 
 
 def parse_version(raw_output: str | None, pattern: str) -> str | None:
+    #R040: Parse version strings from probe output using policy regex patterns.
     if not raw_output:
         return None
     try:
@@ -130,6 +136,7 @@ def parse_version(raw_output: str | None, pattern: str) -> str | None:
 
 
 def compare_versions(current: str, minimum: str) -> int | None:
+    #R040: Compare probed binary version against configured minimum version.
     if Version is not None:
         try:
             current_version = Version(current)
@@ -157,6 +164,7 @@ def compare_versions(current: str, minimum: str) -> int | None:
 
 
 def sha256_file(path: str) -> str:
+    #R045: Compute SHA256 digest for binary integrity verification.
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
         for chunk in iter(lambda: handle.read(65536), b""):
@@ -230,6 +238,7 @@ def evaluate_binary(policy: BinaryPolicy) -> dict[str, Any]:
 
 
 def build_summary(entries: list[dict[str, Any]]) -> dict[str, int]:
+    #R050: Aggregate binary integrity statuses into report summary counters.
     summary = {
         "total": len(entries),
         "missing_required": 0,
@@ -257,6 +266,7 @@ def build_summary(entries: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def make_report(policy_path: Path) -> dict[str, Any]:
+    #R050: Build binary integrity report payload from policy evaluation results.
     policies = load_policy(policy_path)
     entries = [evaluate_binary(policy) for policy in policies]
     return {
@@ -268,6 +278,7 @@ def make_report(policy_path: Path) -> dict[str, Any]:
 
 
 def format_report_text(report: dict[str, Any]) -> str:
+    #R050: Render human-readable binary integrity report text output.
     summary = report["summary"]
     lines = [
         "Binary integrity report",
@@ -292,6 +303,7 @@ def format_report_text(report: dict[str, Any]) -> str:
 
 
 def parse_args() -> argparse.Namespace:
+    #R050: Parse binary integrity CLI options for report and gate behavior.
     parser = argparse.ArgumentParser(description="Generate binary integrity reports.")
     parser.add_argument(
         "--policy",
@@ -328,6 +340,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     # New files/dirs from this process: no group/other access (aligns with umask 007 policy).
+    #R050: Run CLI gate flow and write binary integrity report artifacts.
     os.umask(0o007)
     args = parse_args()
     policy_path = Path(args.policy)

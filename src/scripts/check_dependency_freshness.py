@@ -45,6 +45,7 @@ class RequirementSpec:
 
 
 def normalize_package_name(name: str) -> str:
+    #R030: Normalize dependency package names for consistent matching.
     normalized = re.sub(r"[-_.]+", "-", name).lower()
     if canonicalize_name is not None:
         return canonicalize_name(normalized)
@@ -52,6 +53,7 @@ def normalize_package_name(name: str) -> str:
 
 
 def parse_requirements(requirements_path: Path) -> dict[str, RequirementSpec]:
+    #R030: Parse pinned requirement entries from requirements source files.
     specs: dict[str, RequirementSpec] = {}
     for raw_line in requirements_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -78,6 +80,7 @@ def parse_requirements(requirements_path: Path) -> dict[str, RequirementSpec]:
 
 
 def parse_version_triplet(value: str) -> tuple[int, int, int] | None:
+    #R030: Parse dependency versions into comparable major/minor/patch triplets.
     if Version is not None:
         try:
             version = Version(value)
@@ -97,6 +100,7 @@ def parse_version_triplet(value: str) -> tuple[int, int, int] | None:
 
 
 def classify_update(current_version: str, latest_version: str) -> str:
+    #R040: Classify dependency updates as major/minor/patch/unknown.
     current = parse_version_triplet(current_version)
     latest = parse_version_triplet(latest_version)
     if current is None or latest is None:
@@ -112,6 +116,7 @@ def classify_update(current_version: str, latest_version: str) -> str:
 
 
 def run_outdated_list() -> list[dict[str, Any]]:
+    #R035: Fetch outdated package rows from pip list output.
     cmd = [sys.executable, "-m", "pip", "list", "--outdated", "--format=json"]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
@@ -132,6 +137,7 @@ def run_outdated_list() -> list[dict[str, Any]]:
 
 
 def _collect_reverse_dependency_constraints() -> dict[str, list[dict[str, str]]]:
+    #R030: Collect reverse dependency constraints for installed packages.
     reverse_constraints: dict[str, list[dict[str, str]]] = {}
     for dist in importlib_metadata.distributions():
         parent_raw = dist.metadata.get("Name")
@@ -173,6 +179,7 @@ def _collect_reverse_dependency_constraints() -> dict[str, list[dict[str, str]]]
 
 
 def _collect_requested_packages() -> tuple[set[str], str]:
+    #R030: Collect requested packages from pip inspect metadata output.
     cmd = [sys.executable, "-m", "pip", "inspect", "--local"]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
@@ -204,6 +211,7 @@ def _detect_venv_cruft(
     requirements: dict[str, RequirementSpec],
     extra_allowlist: set[str] | None = None,
 ) -> tuple[list[str], str]:
+    #R040: Evaluate venv cruft packages for policy gate actionability.
     requested, status = _collect_requested_packages()
     if status != "ok":
         return [], "unknown"
@@ -216,6 +224,7 @@ def _detect_venv_cruft(
 
 
 def _evaluate_actionability(latest_version: str, required_by: list[dict[str, str]]) -> tuple[str, bool | None]:
+    #R040: Evaluate whether latest dependency version is actionable under constraints.
     if not required_by:
         return "actionable", True
     if Version is None or SpecifierSet is None:
@@ -243,6 +252,7 @@ def _package_entry_from_outdated_row(
     direct_requirements: dict[str, RequirementSpec],
     reverse_constraints: dict[str, list[dict[str, str]]],
 ) -> dict[str, Any] | None:
+    #R035: Build normalized package entry from outdated package row data.
     name = str(row.get("name", "")).strip()
     current_version = str(row.get("version", "")).strip()
     latest_version = str(row.get("latest_version", "")).strip()
@@ -283,6 +293,7 @@ def _package_entry_from_outdated_row(
 
 
 def _build_summary(packages: list[dict[str, Any]]) -> dict[str, int]:
+    #R045: Build dependency freshness summary counts for report output.
     summary = {
         "total_outdated": len(packages),
         "major_updates": 0,
@@ -317,6 +328,7 @@ def _build_summary(packages: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def _load_direct_requirements(requirements_path: Path, direct_requirements_path: Path | None) -> dict[str, RequirementSpec]:
+    #R030: Load direct requirements source used for direct-outdated gating.
     candidates: list[Path] = []
     if direct_requirements_path is not None:
         candidates.append(direct_requirements_path)
@@ -336,6 +348,7 @@ def make_report(
     direct_requirements_path: Path | None = None,
     venv_cruft_allow: set[str] | None = None,
 ) -> dict[str, Any]:
+    #R045: Assemble dependency freshness report payload and package ordering.
     requirements = parse_requirements(requirements_path)
     direct_requirements = _load_direct_requirements(requirements_path, direct_requirements_path)
     outdated_rows = run_outdated_list()
@@ -368,6 +381,7 @@ def make_report(
 
 
 def format_report_text(report: dict[str, Any]) -> str:
+    #R045: Render dependency freshness report as human-readable text.
     summary = report["summary"]
     requirements_file = str(report.get("requirements_file") or "requirements.txt")
     requirements_path = Path(requirements_file).expanduser().resolve(strict=False)
@@ -419,6 +433,7 @@ def format_report_text(report: dict[str, Any]) -> str:
 
 
 def parse_args() -> argparse.Namespace:
+    #R045: Parse dependency freshness CLI options and gate controls.
     parser = argparse.ArgumentParser(description="Report outdated Python dependencies by update type.")
     parser.add_argument(
         "--requirements",
@@ -470,6 +485,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     # New files/dirs from this process: no group/other access (aligns with umask 007 policy).
+    #R045: Write dependency freshness artifacts and enforce CLI gate exits.
     os.umask(0o007)
     args = parse_args()
     requirements_path = Path(args.requirements)

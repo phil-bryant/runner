@@ -1,16 +1,33 @@
 #!/usr/bin/env python3
 
+import importlib.util
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
+def load_module():
+    #R030: Load checker module for direct helper-function assertions.
+    repo_root = Path(__file__).resolve().parents[2]
+    script_path = repo_root / "src" / "scripts" / "check_postgres_freshness.py"
+    spec = importlib.util.spec_from_file_location("check_postgres_freshness", script_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Unable to load check_postgres_freshness module")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 class CheckPostgresFreshnessTests(unittest.TestCase):
+    #R020: shard-3 function tag
     def setUp(self) -> None:
+        self.module = load_module()
         self.repo_root = Path(__file__).resolve().parents[2]
         self.script_path = self.repo_root / "src" / "scripts" / "check_postgres_freshness.py"
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -19,9 +36,11 @@ class CheckPostgresFreshnessTests(unittest.TestCase):
         self.stub_bin.mkdir(parents=True, exist_ok=True)
         self._write_psql_stub()
 
+    #R020: shard-3 function tag
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    #R020: shard-3 function tag
     def _write_psql_stub(self) -> None:
         stub_path = self.stub_bin / "psql"
         stub_path.write_text(
@@ -48,6 +67,7 @@ class CheckPostgresFreshnessTests(unittest.TestCase):
         )
         stub_path.chmod(0o755)
 
+    #R020: shard-3 function tag
     def _run_checker(self, snapshot: dict, policy: dict, extra_args: list[str] | None = None) -> tuple[int, dict]:
         snapshot_path = self.tmp_path / "snapshot.json"
         policy_path = self.tmp_path / "policy.json"
@@ -82,6 +102,7 @@ class CheckPostgresFreshnessTests(unittest.TestCase):
 
     def test_fail_on_matching_cve_range(self) -> None:
         #R025-T01: Verify CVE matching, severity thresholds, stale snapshot handling, and fail-on-CVE behavior.
+        #R050-T01: Verify CVE gate fails when installed versions match affected ranges above threshold (`tests/py/test_check_postgres_freshness.py`).
         snapshot = {
             "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "cves": [
@@ -109,6 +130,38 @@ class CheckPostgresFreshnessTests(unittest.TestCase):
         self.assertTrue(report["summary"]["gate_failed"])
         self.assertEqual(len(report["cve"]["vulnerabilities"]), 1)
         self.assertEqual(report["cve"]["vulnerabilities"][0]["component"], "client")
+
+    def test_parse_semver_normalizes(self) -> None:
+        #R030-T01: Verify version parsing/normalization produces expected comparable values for semantic and server-version inputs (`tests/py/test_check_postgres_freshness.py`).
+        self.assertEqual(self.module.parse_semver("16.2"), (16, 2, 0))
+        self.assertEqual(self.module.parse_server_version_num("160002"), "16.2.0")
+        self.assertEqual(self.module.compare_semver("16.2", "15.9"), 1)
+
+    def test_version_in_any_range(self) -> None:
+        #R035-T01: Verify version-range evaluation correctly matches and rejects boundary version cases (`tests/py/test_check_postgres_freshness.py`).
+        self.assertTrue(self.module.version_in_any_range("16.2.0", [">=16.0,<16.3"]))
+        self.assertFalse(self.module.version_in_any_range("16.3.0", [">=16.0,<16.3"]))
+
+    def test_server_version_query(self) -> None:
+        #R040-T01: Verify server version query flow populates parsed server version and freshness status fields (`tests/py/test_check_postgres_freshness.py`).
+        snapshot = {"generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), "cves": []}
+        policy = {"severity_threshold": "high", "max_snapshot_age_hours": 168, "fail_on_stale_snapshot": False}
+        code, report = self._run_checker(
+            snapshot=snapshot,
+            policy=policy,
+            extra_args=["--check-server-version", "--server-dsn", "postgresql://demo"],
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(report["server"]["status"], "ok")
+        self.assertEqual(report["server"]["version"], "16.2.0")
+
+    def test_cve_snapshot_load_refresh(self) -> None:
+        #R045-T01: Verify snapshot refresh/load decision logic recognizes changed payloads and freshness metadata behavior (`tests/py/test_check_postgres_freshness.py`).
+        existing = {"generated_at": "2026-01-01T00:00:00Z", "cves": [{"id": "CVE-1"}]}
+        refreshed_same = {"generated_at": "2026-01-02T00:00:00Z", "cves": [{"id": "CVE-1"}]}
+        refreshed_changed = {"generated_at": "2026-01-02T00:00:00Z", "cves": [{"id": "CVE-2"}]}
+        self.assertFalse(self.module.should_write_refreshed_snapshot(existing, refreshed_same))
+        self.assertTrue(self.module.should_write_refreshed_snapshot(existing, refreshed_changed))
 
     def test_pass_when_versions_not_in_affected_ranges(self) -> None:
         #R025-T01: Verify CVE matching, severity thresholds, stale snapshot handling, and fail-on-CVE behavior.
@@ -249,6 +302,53 @@ class CheckPostgresFreshnessTests(unittest.TestCase):
         self.assertIn("attempted psql args: -h dbhost -U teller -d prod", joined_warnings)
         self.assertEqual(report["server"]["status"], "error")
         self.assertIn("connection refused", report["server"]["error"])
+
+    def test_cve_policy_gate(self) -> None:
+        #R055-T01: Verify CVE policy loading and gate-failed flags honor configured stale-snapshot and threshold policy values (`tests/py/test_check_postgres_freshness.py`).
+        policy_path = self.tmp_path / "policy-load.json"
+        policy_path.write_text(
+            json.dumps({"severity_threshold": "critical", "max_snapshot_age_hours": 12, "fail_on_stale_snapshot": True}),
+            encoding="utf-8",
+        )
+        args = type("Args", (), {"cve_policy": str(policy_path)})()
+        policy = self.module._load_cve_policy(args)
+        result = {"gate_failed": False, "status": "passed", "assurance": "matched"}
+        self.module._mark_policy_failed(result)
+        self.assertEqual(policy["severity_threshold"], "critical")
+        self.assertEqual(policy["max_snapshot_age_hours"], 12)
+        self.assertTrue(policy["fail_on_stale_snapshot"])
+        self.assertTrue(result["gate_failed"])
+        self.assertEqual(result["status"], "failed")
+
+    def test_report_format(self) -> None:
+        #R060-T01: Verify formatted report output contains expected summary fields and warning sections (`tests/py/test_check_postgres_freshness.py`).
+        report = {
+            "client": {"status": "ok", "version": "16.2.0", "minimum_version": "15.0"},
+            "server": {"checked": True, "status": "ok", "version": "16.2.0", "minimum_version": "15.0"},
+            "cve": {
+                "checked": True,
+                "severity_threshold": "high",
+                "snapshot_cve_count": 1,
+                "snapshot_generated_at": "2026-01-01T00:00:00Z",
+                "snapshot_age_hours": 1.5,
+                "status": "passed",
+                "assurance": "matched-against-snapshot",
+                "vulnerabilities": [],
+            },
+            "summary": {"warnings": ["warn"], "stale_components": [], "gate_failed": False},
+        }
+        text = self.module.format_text_report(report)
+        self.assertIn("PostgreSQL freshness report", text)
+        self.assertIn("- Warnings:", text)
+
+    def test_cli_artifact_and_exit(self) -> None:
+        #R065-T01: Verify CLI run writes artifacts and exits with gate-driven status code (`tests/py/test_check_postgres_freshness.py`).
+        snapshot = {"generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), "cves": []}
+        policy = {"severity_threshold": "high", "max_snapshot_age_hours": 168, "fail_on_stale_snapshot": False}
+        code, report = self._run_checker(snapshot=snapshot, policy=policy)
+        self.assertEqual(code, 0)
+        self.assertIn("summary", report)
+        self.assertIn("cve", report)
 
 
 if __name__ == "__main__":

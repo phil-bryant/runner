@@ -38,6 +38,7 @@ HTTP_USER_AGENT = "teller-postgres-cve-check/1.0"
 
 
 def parse_semver(value: str | None) -> tuple[int, int, int] | None:
+    #R030: Normalize PostgreSQL version text into comparable semver triplets.
     if not value:
         return None
     parts = re.findall(r"\d+", value)
@@ -49,6 +50,7 @@ def parse_semver(value: str | None) -> tuple[int, int, int] | None:
 
 
 def compare_semver(left: str | None, right: str | None) -> int | None:
+    #R030: Compare normalized PostgreSQL semantic version values.
     left_triplet = parse_semver(left)
     right_triplet = parse_semver(right)
     if left_triplet is None or right_triplet is None:
@@ -61,11 +63,13 @@ def compare_semver(left: str | None, right: str | None) -> int | None:
 
 
 def parse_psql_client_version(raw_output: str) -> str | None:
+    #R030: Parse psql client version from command output text.
     match = re.search(r"(\d+(?:\.\d+){0,2})", raw_output)
     return match.group(1) if match else None
 
 
 def parse_server_version_num(raw_value: str) -> str | None:
+    #R030: Parse PostgreSQL server_version_num into semantic version text.
     digits = re.sub(r"\D", "", raw_value)
     if not digits:
         return None
@@ -81,6 +85,7 @@ def parse_server_version_num(raw_value: str) -> str | None:
 
 
 def meets_minimum(current: str | None, minimum: str | None) -> bool | None:
+    #R030: Evaluate PostgreSQL version values against minimum policy thresholds.
     if not minimum:
         return None
     current_triplet = parse_semver(current)
@@ -91,6 +96,7 @@ def meets_minimum(current: str | None, minimum: str | None) -> bool | None:
 
 
 def normalize_severity(value: str | None) -> str:
+    #R030: Normalize CVE severity labels for consistent threshold checks.
     if not value:
         return "unknown"
     lowered = value.strip().lower()
@@ -100,12 +106,14 @@ def normalize_severity(value: str | None) -> str:
 
 
 def severity_meets_threshold(value: str | None, threshold: str | None) -> bool:
+    #R030: Compare normalized CVE severity against configured threshold.
     normalized = normalize_severity(value)
     normalized_threshold = normalize_severity(threshold)
     return SEVERITY_ORDER.get(normalized, 0) >= SEVERITY_ORDER.get(normalized_threshold, 0)
 
 
 def parse_iso_datetime(value: str | None) -> datetime | None:
+    #R030: Parse ISO timestamps used for CVE snapshot freshness checks.
     if not value:
         return None
     text = value.strip()
@@ -121,6 +129,7 @@ def parse_iso_datetime(value: str | None) -> datetime | None:
 
 
 def satisfies_constraint(version: str | None, constraint: str) -> bool:
+    #R035: Evaluate version satisfaction for a single range constraint.
     match = re.match(r"^\s*(<=|>=|<|>|==|=)\s*([0-9][0-9A-Za-z.\-]*)\s*$", constraint)
     if not match:
         return False
@@ -143,6 +152,7 @@ def satisfies_constraint(version: str | None, constraint: str) -> bool:
 
 
 def satisfies_range(version: str | None, expression: str) -> bool:
+    #R035: Evaluate version satisfaction across comma-separated constraints.
     constraints = [part.strip() for part in expression.split(",") if part.strip()]
     if not constraints:
         return False
@@ -150,12 +160,14 @@ def satisfies_range(version: str | None, expression: str) -> bool:
 
 
 def version_in_any_range(version: str | None, ranges: list[str]) -> bool:
+    #R035: Evaluate version membership across affected version ranges.
     if not version:
         return False
     return any(satisfies_range(version, expression) for expression in ranges if expression)
 
 
 def read_json_file(path_value: str | None) -> dict[str, Any] | None:
+    #R045: Load JSON payloads for CVE snapshot and policy inputs.
     if not path_value:
         return None
     path = Path(path_value)
@@ -171,6 +183,7 @@ def should_write_refreshed_snapshot(
     existing_snapshot: dict[str, Any] | None,
     refreshed_snapshot: dict[str, Any] | None,
 ) -> bool:
+    #R045: Determine whether refreshed CVE snapshot should be persisted.
     if not isinstance(refreshed_snapshot, dict):
         return False
     if not isinstance(existing_snapshot, dict):
@@ -181,6 +194,7 @@ def should_write_refreshed_snapshot(
 
 
 def component_to_scope(component_text: str) -> str:
+    #R030: Map CVE component descriptions to client/server scope.
     lowered = component_text.lower()
     if "client" in lowered:
         return "client"
@@ -190,6 +204,7 @@ def component_to_scope(component_text: str) -> str:
 
 
 def score_to_severity(cvss_score: float | None) -> str:
+    #R030: Map CVSS score values into normalized severity buckets.
     if cvss_score is None:
         return "unknown"
     if cvss_score >= 9.0:
@@ -202,10 +217,12 @@ def score_to_severity(cvss_score: float | None) -> str:
 
 
 def strip_html(value: str) -> str:
+    #R045: Strip HTML markup while parsing PostgreSQL CVE source content.
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", value))).strip()
 
 
 def extract_major(version: str | None) -> str | None:
+    #R030: Extract PostgreSQL major version from parsed semantic version values.
     parsed = parse_semver(version)
     if parsed is None:
         return None
@@ -213,6 +230,7 @@ def extract_major(version: str | None) -> str | None:
 
 
 def validate_postgresql_major(major: str) -> str:
+    #R030: Validate PostgreSQL major values before CVE source fetches.
     trimmed = major.strip()
     if not re.fullmatch(r"[1-9][0-9]?", trimmed):
         raise ValueError(f"Invalid PostgreSQL major version for CVE fetch: {major!r}")
@@ -220,6 +238,7 @@ def validate_postgresql_major(major: str) -> str:
 
 
 def fetch_postgresql_security_page(major: str) -> str:
+    #R045: Fetch PostgreSQL security advisory page for a major release.
     if requests is None:
         raise RuntimeError("requests is required to refresh PostgreSQL CVE snapshots.")
     normalized_major = validate_postgresql_major(major)
@@ -245,6 +264,7 @@ def fetch_postgresql_security_page(major: str) -> str:
 
 
 def fetch_postgresql_cve_snapshot(majors: set[str]) -> dict[str, Any]:
+    #R045: Build PostgreSQL CVE snapshot from fetched security advisories.
     cves: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
     for major in sorted(majors):
@@ -299,6 +319,7 @@ def fetch_postgresql_cve_snapshot(majors: set[str]) -> dict[str, Any]:
 
 
 def _initial_cve_result(args: argparse.Namespace) -> dict[str, Any]:
+    #R050: Initialize CVE evaluation result payload fields and defaults.
     return {
         "checked": args.check_cves,
         "policy_file": args.cve_policy or None,
@@ -320,6 +341,7 @@ def _initial_cve_result(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _load_cve_policy(args: argparse.Namespace) -> dict[str, Any]:
+    #R055: Load CVE policy thresholds and stale-snapshot gate settings.
     policy = {
         "severity_threshold": "high",
         "max_snapshot_age_hours": 168,
@@ -344,6 +366,7 @@ def _refresh_or_load_snapshot(
     server_version: str | None,
     result: dict[str, Any],
 ) -> dict[str, Any] | None:
+    #R045: Refresh or load PostgreSQL CVE snapshot for evaluation.
     snapshot: dict[str, Any] | None = None
     if args.refresh_cve_snapshot:
         target_majors: set[str] = set()
@@ -371,12 +394,14 @@ def _refresh_or_load_snapshot(
 
 
 def _mark_policy_failed(result: dict[str, Any]) -> None:
+    #R055: Mark CVE policy evaluation as gate-failed with failure assurance.
     result["gate_failed"] = True
     result["status"] = "failed"
     result["assurance"] = "policy-failed"
 
 
 def _apply_snapshot_freshness(result: dict[str, Any], generated_at: datetime | None, args: argparse.Namespace) -> None:
+    #R045: Apply CVE snapshot freshness policy to evaluation state.
     if generated_at is None:
         result["warnings"].append("CVE snapshot missing valid generated_at timestamp.")
         result["snapshot_stale"] = True
@@ -404,6 +429,7 @@ def _collect_cve_findings(
     client_version: str | None,
     server_version: str | None,
 ) -> list[dict[str, Any]]:
+    #R050: Collect CVE findings that affect installed client/server versions.
     findings: list[dict[str, Any]] = []
     for cve in cve_entries:
         if not isinstance(cve, dict):
@@ -438,6 +464,7 @@ def _findings_for_spec(
     client_version: str | None,
     server_version: str | None,
 ) -> list[dict[str, Any]]:
+    #R050: Build CVE findings for a single affected-component specification.
     if not isinstance(spec, dict):
         return []
     component = str(spec.get("component", "both")).lower()
@@ -475,6 +502,7 @@ def _findings_for_spec(
 
 
 def _build_server_version_command(args: argparse.Namespace) -> list[str]:
+    #R040: Build psql command for PostgreSQL server version checks.
     server_cmd = ["psql"]
     if args.server_psql_args:
         server_cmd.extend(shlex.split(args.server_psql_args))
@@ -492,6 +520,7 @@ def _check_client_version(
     warnings: list[str],
     stale_components: list[str],
 ) -> None:
+    #R040: Run and evaluate PostgreSQL client version freshness checks.
     if not psql_path:
         warnings.append("psql not found on PATH; PostgreSQL freshness checks skipped.")
         if args.fail_on_stale:
@@ -531,6 +560,7 @@ def _check_server_version(
     warnings: list[str],
     stale_components: list[str],
 ) -> None:
+    #R040: Run and evaluate PostgreSQL server version freshness checks.
     if not args.check_server_version or not psql_path:
         return
     server_exit, server_output = run_command(_build_server_version_command(args))
@@ -558,6 +588,7 @@ def _check_server_version(
 
 
 def _validate_cve_entries(result: dict[str, Any], snapshot: dict[str, Any]) -> list[Any] | None:
+    #R050: Validate CVE snapshot entry list before vulnerability matching.
     cve_entries = snapshot.get("cves", [])
     if not isinstance(cve_entries, list):
         result["warnings"].append("CVE snapshot 'cves' payload is not a list.")
@@ -580,6 +611,7 @@ def _merge_cve_summary(
     warnings: list[str],
     stale_components: list[str],
 ) -> None:
+    #R050: Merge CVE evaluation summary into overall freshness status.
     if cve_result.get("warnings"):
         warnings.extend(cve_result["warnings"])
     if cve_result.get("vulnerabilities"):
@@ -591,6 +623,7 @@ def _merge_cve_summary(
 
 
 def _base_report_lines(report: dict[str, Any]) -> list[str]:
+    #R060: Build base PostgreSQL freshness report text lines.
     client = report["client"]
     server = report["server"]
     cve = report["cve"]
@@ -615,6 +648,7 @@ def _base_report_lines(report: dict[str, Any]) -> list[str]:
 
 
 def _initial_client_info(args: argparse.Namespace, psql_path: str | None) -> dict[str, Any]:
+    #R040: Initialize PostgreSQL client status payload before checks.
     status = "unknown"
     if not psql_path:
         status = "missing"
@@ -629,6 +663,7 @@ def _initial_client_info(args: argparse.Namespace, psql_path: str | None) -> dic
 
 
 def _initial_server_info(args: argparse.Namespace, psql_path: str | None) -> dict[str, Any]:
+    #R040: Initialize PostgreSQL server status payload before checks.
     status = "unknown"
     if not args.check_server_version:
         status = "not-checked"
@@ -644,6 +679,7 @@ def _initial_server_info(args: argparse.Namespace, psql_path: str | None) -> dic
 
 
 def _policy_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    #R055: Build normalized freshness policy snapshot from CLI arguments.
     return {
         "min_client_version": args.min_client_version or None,
         "min_server_version": args.min_server_version or None,
@@ -662,6 +698,7 @@ def evaluate_cves(
     client_version: str | None,
     server_version: str | None,
 ) -> dict[str, Any]:
+    #R050: Evaluate CVE exposure and policy gate outcomes for PostgreSQL versions.
     result: dict[str, Any] = _initial_cve_result(args)
     if not args.check_cves:
         return result
@@ -704,6 +741,7 @@ def evaluate_cves(
 
 
 def run_command(args: list[str], timeout_seconds: int = 10) -> tuple[int, str]:
+    #R040: Execute shell command probes with timeout/output normalization.
     try:
         result = subprocess.run(
             args,
@@ -721,6 +759,7 @@ def run_command(args: list[str], timeout_seconds: int = 10) -> tuple[int, str]:
 
 
 def describe_server_target(args: argparse.Namespace) -> str:
+    #R040: Describe configured PostgreSQL server target for diagnostics.
     if args.server_psql_args:
         return f"psql args: {args.server_psql_args}"
     if args.server_dsn:
@@ -729,6 +768,7 @@ def describe_server_target(args: argparse.Namespace) -> str:
 
 
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
+    #R060: Assemble PostgreSQL freshness report payload from all checks.
     stale_components: list[str] = []
     warnings: list[str] = []
     psql_path = shutil.which("psql")
@@ -774,6 +814,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def format_text_report(report: dict[str, Any]) -> str:
+    #R060: Render PostgreSQL freshness report payload to text output.
     summary = report["summary"]
     lines = _base_report_lines(report)
     if summary["warnings"]:
@@ -788,6 +829,7 @@ def format_text_report(report: dict[str, Any]) -> str:
 
 
 def parse_args() -> argparse.Namespace:
+    #R065: Parse PostgreSQL freshness CLI artifact and gate options.
     parser = argparse.ArgumentParser(description="Generate PostgreSQL version freshness reports.")
     parser.add_argument(
         "--output-json",
@@ -859,6 +901,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     # New files/dirs from this process: no group/other access (aligns with umask 007 policy).
+    #R065: Write PostgreSQL freshness artifacts and enforce exit gate status.
     os.umask(0o007)
     args = parse_args()
     output_json = Path(args.output_json)

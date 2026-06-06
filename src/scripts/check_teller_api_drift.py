@@ -19,12 +19,14 @@ HOME_TELLER_DIR = Path.home() / ".teller"
 
 
 def read_text(path: Path) -> str:
+    #R030: Read local text inputs used by Teller credential resolution.
     if not path.is_file():
         return ""
     return path.read_text(encoding="utf-8").strip()
 
 
 def read_token(path: Path) -> str:
+    #R030: Read local Teller token payloads from auth token files.
     if not path.is_file():
         return ""
     try:
@@ -35,6 +37,7 @@ def read_token(path: Path) -> str:
 
 
 def discover_token_candidates() -> list[tuple[str, str]]:
+    #R030: Discover local Teller token candidates from standard token files.
     candidates: list[tuple[str, str]] = []
     default_token = read_token(HOME_TELLER_DIR / "auth_token.json")
     if default_token:
@@ -50,6 +53,7 @@ def discover_token_candidates() -> list[tuple[str, str]]:
 
 
 def _resolve_cert_key_paths(cert_path: str, key_path: str) -> tuple[str, str]:
+    #R030: Resolve Teller certificate and key paths for live checks.
     resolved_cert = cert_path
     resolved_key = key_path
     if not resolved_cert:
@@ -68,6 +72,7 @@ def _filter_token_candidates(
     institution_id: str,
     warnings: list[str],
 ) -> list[tuple[str, str]]:
+    #R030: Filter token candidates by requested institution suffix.
     if not institution_id:
         return candidates
     filtered = [item for item in candidates if item[0] == institution_id]
@@ -84,6 +89,7 @@ def _select_local_token(
     institution_id: str,
     warnings: list[str],
 ) -> tuple[str, str]:
+    #R030: Select a deterministic local token candidate for live checks.
     filtered = _filter_token_candidates(candidates, institution_id, warnings)
     if institution_id:
         if len(filtered) > 1:
@@ -104,6 +110,7 @@ def _select_local_token(
 
 
 def resolve_credentials(institution_id: str = "", run_all_tokens: bool = False) -> dict[str, Any]:
+    #R030: Resolve Teller live-check credentials from env and local fallback.
     cert_path = os.environ.get("TELLER_CERT_PATH", "").strip()
     key_path = os.environ.get("TELLER_KEY_PATH", "").strip()
     token = os.environ.get("TELLER_ACCESS_TOKEN", "").strip()
@@ -145,6 +152,7 @@ def _run_live_check(
     path: str,
     auth_token: str = "",
 ) -> None:
+    #R035: Execute an authenticated Teller live endpoint drift check.
     auth = (auth_token, "") if auth_token else None
     url = f"{BASE_URL}{path}"
     check_result: dict[str, Any] = {
@@ -170,6 +178,7 @@ def _collect_source_checks(
     source_files: list[Path],
     endpoint_markers: list[str],
 ) -> list[dict[str, Any]]:
+    #R035: Collect source marker checks for Teller endpoint drift coverage.
     checks: list[dict[str, Any]] = []
     for source_path in source_files:
         status = "pass"
@@ -188,6 +197,7 @@ def _collect_source_checks(
 
 
 def _fallback_live_result(message: str) -> dict[str, Any]:
+    #R040: Return fallback Teller live-check result when live mode unavailable.
     return {
         "mode": "fallback",
         "status": "warn",
@@ -208,6 +218,7 @@ def _run_authenticated_live_checks(
     run_all_tokens: bool,
     warnings: list[str],
 ) -> None:
+    #R035: Run authenticated Teller live checks for token candidates.
     if run_all_tokens and token_candidates:
         for token_source, candidate_token in token_candidates:
             _run_live_check(
@@ -257,6 +268,7 @@ def _run_authenticated_live_checks(
 
 
 def run_live_canary(timeout_seconds: int, institution_id: str = "", run_all_tokens: bool = False) -> dict[str, Any]:
+    #R035: Run Teller live canary checks when credentials are available.
     try:
         import requests
     except ImportError:
@@ -303,6 +315,7 @@ def run_live_canary(timeout_seconds: int, institution_id: str = "", run_all_toke
 
 
 def run_fallback_checks() -> dict[str, Any]:
+    #R040: Run fallback Teller drift checks against local docs and sources.
     checks: list[dict[str, Any]] = []
     expected_docs = [
         "teller-api-reference-institutions.md",
@@ -336,6 +349,7 @@ def run_fallback_checks() -> dict[str, Any]:
 
 
 def parse_args() -> argparse.Namespace:
+    #R045: Parse Teller drift CLI options and strict gate controls.
     parser = argparse.ArgumentParser(description="Check Teller API drift/compatibility.")
     parser.add_argument(
         "--output-json",
@@ -377,6 +391,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_text_report(report: dict[str, Any]) -> str:
+    #R045: Render Teller drift check results as text report output.
     lines = [
         "Teller API smoke report",
         f"- Mode: {report['mode']}",
@@ -402,6 +417,7 @@ def build_text_report(report: dict[str, Any]) -> str:
 
 def main() -> int:
     # New files/dirs from this process: no group/other access (aligns with umask 007 policy).
+    #R045: Write Teller drift artifacts and enforce CLI exit gating.
     os.umask(0o007)
     args = parse_args()
     output_json = Path(args.output_json)
