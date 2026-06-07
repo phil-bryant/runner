@@ -126,7 +126,7 @@ init_gpg_home() {
     if [[ -n "$GPG_HOME" ]]; then
         return
     fi
-    GPG_HOME="$(mktemp -d)"
+    GPG_HOME="$(mktemp -d "${TMPDIR:-/tmp}/runbook-gpg-home.XXXXXX")"
     cleanup_paths+=("$GPG_HOME")
     chmod 700 "$GPG_HOME"
 }
@@ -157,7 +157,7 @@ load_backup_decryption_material() {
         exit 1
     fi
     init_gpg_home
-    private_key_path="$(mktemp)"
+    private_key_path="$(mktemp "${TMPDIR:-/tmp}/runbook-private-key.XXXXXX")"
     cleanup_paths+=("$private_key_path")
     printf '%s\n' "$gpg_private_key" >"$private_key_path"
     gpg --batch --yes --homedir "$GPG_HOME" --pinentry-mode loopback --passphrase "$gpg_passphrase" --import "$private_key_path" >/dev/null 2>&1
@@ -277,7 +277,7 @@ require_nonempty_env() {
     done
 }
 
-profile_exports_file="$(mktemp)"
+profile_exports_file="$(mktemp "${TMPDIR:-/tmp}/runbook-profile-exports.XXXXXX")"
 if ! "$DB_PROFILE_HELPER" >"$profile_exports_file"; then
     rm -f "$profile_exports_file"
     exit 1
@@ -315,7 +315,7 @@ if [[ "$DB_DIALECT" == "sqlite" || "${PROFILE_TARGET:-local}" == "sqlite" ]]; th
     BACKUP_INPUT_PATH="$BACKUP_PATH"
     if [[ "$BACKUP_PATH" == *.gpg ]]; then
         load_backup_decryption_material
-        BACKUP_INPUT_PATH="$(mktemp)"
+        BACKUP_INPUT_PATH="$(mktemp "${TMPDIR:-/tmp}/runbook-backup-input.XXXXXX")"
         cleanup_paths+=("$BACKUP_INPUT_PATH")
         decrypt_backup_artifact "$BACKUP_PATH" "$BACKUP_INPUT_PATH"
     fi
@@ -343,7 +343,7 @@ fi
 BACKUP_INPUT_PATH="$BACKUP_PATH"
 if [[ "$BACKUP_PATH" == *.gpg ]]; then
     load_backup_decryption_material
-    BACKUP_INPUT_PATH="$(mktemp)"
+    BACKUP_INPUT_PATH="$(mktemp "${TMPDIR:-/tmp}/runbook-backup-input.XXXXXX")"
     cleanup_paths+=("$BACKUP_INPUT_PATH")
     decrypt_backup_artifact "$BACKUP_PATH" "$BACKUP_INPUT_PATH"
 fi
@@ -382,7 +382,7 @@ if [[ "${PROFILE_TARGET:-local}" == "managed" ]]; then
     fi
 
     if [[ "$PROFILE_NAME" != "supabase_direct" && -x "$DB_PROFILE_HELPER" ]]; then
-        profile_exports_file="$(mktemp)"
+        profile_exports_file="$(mktemp "${TMPDIR:-/tmp}/runbook-profile-exports.XXXXXX")"
         if ! "$DB_PROFILE_HELPER" --profile supabase_direct >"$profile_exports_file"; then
             rm -f "$profile_exports_file"
             exit 1
@@ -530,7 +530,7 @@ if [ -z "$TABLE_NAME" ]; then
     verify_backup_manifest "$BACKUP_PATH" "$GLOBALS_BACKUP_PATH" "$MANIFEST_PATH"
     GLOBALS_RESTORE_PATH="$GLOBALS_BACKUP_PATH"
     if [[ "$GLOBALS_BACKUP_PATH" == *.gpg ]]; then
-        GLOBALS_RESTORE_PATH="$(mktemp)"
+        GLOBALS_RESTORE_PATH="$(mktemp "${TMPDIR:-/tmp}/runbook-globals-restore.XXXXXX")"
         cleanup_paths+=("$GLOBALS_RESTORE_PATH")
         decrypt_backup_artifact "$GLOBALS_BACKUP_PATH" "$GLOBALS_RESTORE_PATH"
     fi
@@ -557,7 +557,7 @@ if [ -n "$TABLE_NAME" ]; then
 else
     #R030: Globals replay may encounter pre-existing cluster roles (for example app_owner).
     # Retry in non-stop mode only for duplicate-role conflicts so remaining grants still apply.
-    globals_err_log="$(mktemp)"
+    globals_err_log="$(mktemp "${TMPDIR:-/tmp}/runbook-globals-error.XXXXXX")"
     if ! PGPASSWORD="$POSTGRES_PASSWORD" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -f "$GLOBALS_RESTORE_PATH" 2>"$globals_err_log"; then
         if rg -q 'role ".*" already exists' "$globals_err_log"; then
             echo "⚠️  Globals replay hit existing roles; retrying in non-stop mode to apply remaining statements."

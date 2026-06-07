@@ -4,10 +4,17 @@ import sys
 from pathlib import Path
 
 
-def load_json(path: Path):
+def load_json(path: Path, default):
     #R001: Load scanner report JSON artifacts from the configured report directory.
-    with path.open("r", encoding="utf-8") as fh:
-        return json.load(fh)
+    if not path.exists():
+        return default
+    raw = path.read_text(encoding="utf-8").strip()
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return default
 
 
 def count_pip_audit(payload) -> int:
@@ -31,14 +38,14 @@ def main() -> int:
     report_dir = Path(sys.argv[1])
     fail_gate = sys.argv[2].lower() == "true"
     policy_mode = sys.argv[3].strip().lower()
-    semgrep = load_json(report_dir / "semgrep.json")
-    bandit = load_json(report_dir / "bandit.json")
-    pip_audit = load_json(report_dir / "pip-audit.json")
-    secrets = load_json(report_dir / "detect-secrets.json")
-    swiftlint = load_json(report_dir / "swiftlint.json")
-    shellcheck = load_json(report_dir / "shellcheck.json")
-    gitleaks = load_json(report_dir / "gitleaks.json")
-    ruff_payload = load_json(report_dir / "ruff.json") if (report_dir / "ruff.json").exists() else []
+    semgrep = load_json(report_dir / "semgrep.json", {})
+    bandit = load_json(report_dir / "bandit.json", {})
+    pip_audit = load_json(report_dir / "pip-audit.json", [])
+    secrets = load_json(report_dir / "detect-secrets.json", {})
+    swiftlint = load_json(report_dir / "swiftlint.json", [])
+    shellcheck = load_json(report_dir / "shellcheck.json", [])
+    gitleaks = load_json(report_dir / "gitleaks.json", [])
+    ruff_payload = load_json(report_dir / "ruff.json", [])
 
     semgrep_results = semgrep.get("results", []) if isinstance(semgrep, dict) else []
     bandit_results = bandit.get("results", []) if isinstance(bandit, dict) else []

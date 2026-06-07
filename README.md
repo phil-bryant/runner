@@ -14,7 +14,7 @@ Actions workflow exists at `.github/workflows/ci.yml`, but it is **manual-dispat
 enforcement mechanism is the local numbered lanes (`tests/tNN_*.sh` + `./11_run_all_self_tests_parallel.sh`),
 not GitHub-hosted CI: this is a solo project and red X's on every push are noise rather than signal. The
 workflow runs the engine's Linux-portable self-run subset against `runner` itself (requirements traceability
-`t04` + shell unit `t05` (shellcheck + Bats over the shared goldens) + Python unit `t06`); the AV (`t01`),
+`t04` + shell unit `t05` (shellcheck + Bats over the shared goldens, optional kcov runtime coverage) + Python unit `t06`); the AV (`t01`),
 dependency-freshness (`t02`), SAST (`t03`), mutation (`t07`), fuzz (`t08`), DAST (`t09`), and FileVault (`t10`)
 lanes stay local. It is kept correct and manually runnable so it can be wired to `push`/`pull_request` as the
 project approaches `v1.0`. This matches the workspace-wide policy in
@@ -69,11 +69,19 @@ dependency freshness, static security, requirements traceability, and shell unit
 cd runner
 ./02_create_venv.sh && source runner-venv/bin/activate && ./04_load_requirements.sh && deactivate
 ./11_run_all_self_tests_parallel.sh   # 5 self lanes against runner, all green
+# optional shell runtime coverage for t05
+RUN_SHELL_COVERAGE=true ./tests/t05_run_shell_unit_tests.sh
 ```
 
 The load-requirements step bootstraps a hash-pinned secure `pip` (`26.1.2`) before self-tests run. If `t03` ever
 fails with `pip-audit` findings on `pip` itself, reactivate `runner-venv` and rerun `./04_load_requirements.sh`
 (or recreate the venv with `./02_create_venv.sh`) before running `./11_run_all_self_tests_parallel.sh` again.
+
+When `RUN_SHELL_COVERAGE=true`, the shell lane first runs normal Bats gating, then runs a per-file `kcov` pass and
+writes reports under `artifacts/coverage/shell/`. Coverage collection is best-effort by default
+(`SHELL_COVERAGE_STRICT=false`), so lane pass/fail still reflects the non-instrumented Bats run. Set
+`SHELL_COVERAGE_STRICT=true` to make coverage-collection failures fatal and tune per-file runtime with
+`SHELL_COVERAGE_TIMEOUT_SECONDS` (default `120`).
 
 `11_run_all_self_tests_parallel.sh` sets `RUNBOOK_REPO_ROOT` to runner, sources `config/runbook/runner.env`, and execs the
 golden `07_run_all_tests_parallel.sh`. The orchestrator discovers runner's own `tests/tNN_*.sh` goldens and runs only the
@@ -165,7 +173,7 @@ The runner holds only the lanes that are genuinely shared across repos, renumber
 | `t02` | Dependency freshness |
 | `t03` | Static security (SAST) |
 | `t04` | Requirements traceability |
-| `t05` | Shell unit tests (Bats) |
+| `t05` | Shell unit tests (Bats, optional `kcov` via `RUN_SHELL_COVERAGE=true`) |
 | `t06` | Python unit tests (pytest) |
 | `t07` | Mutation tests (mutmut) |
 | `t08` | Fuzz / property tests (Hypothesis) |

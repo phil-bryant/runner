@@ -19,7 +19,7 @@ def test_load_json_reads_artifact():
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "payload.json"
         path.write_text(json.dumps({"ok": True}), encoding="utf-8")
-        payload = MODULE.load_json(path)
+        payload = MODULE.load_json(path, {})
     assert payload["ok"] is True
 
 

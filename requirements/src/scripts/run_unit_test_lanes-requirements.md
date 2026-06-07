@@ -13,6 +13,8 @@ R005  Statement: Resolve DB profile exports before SQL-lane execution and fail f
 Design: Require executable `db_profile_export.sh`, evaluate profile exports, and run target-specific SQL-lane preflight (`pg_prove` + pgtap for PostgreSQL-family targets, sqlite preflight/tooling for SQLite target), stopping immediately on prerequisite gaps.
 Tests:
 - R005-T01: Verify SQL preflight failures surface clear diagnostics and block SQL test execution.
+- R005-T02: Verify shell coverage mode fails fast when the configured `kcov` tool is missing.
+- R005-T03: Verify shell coverage mode wraps Bats in deterministic per-file kcov report directories.
 
 R010  Statement: Run Swift tests under shared SwiftPM locking with bounded stale-cache recovery.
 Design: Source `macos_ui_swift_lock.sh`, execute `swift test` under lock, and retry exactly once after clearing `.build` only for stale-checkout style access failures.

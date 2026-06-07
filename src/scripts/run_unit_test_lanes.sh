@@ -24,11 +24,18 @@ MACOS_UI_SWIFTPM_LOCK="${MACOS_UI_SWIFTPM_LOCK:-./src/macos-ui/.swiftpm-run.lock
 MACOS_UI_SWIFT_LOCK_TIMEOUT_SECONDS="${MACOS_UI_SWIFT_LOCK_TIMEOUT_SECONDS:-600}"
 #R030: Keep crash-reporter verification isolated to dedicated script 14.
 BATS_FILTER="${BATS_FILTER:-}"
+RUN_SHELL_COVERAGE="${RUN_SHELL_COVERAGE:-false}"
+SHELL_COVERAGE_TOOL="${SHELL_COVERAGE_TOOL:-kcov}"
+SHELL_COVERAGE_KCOV_CONFIG="${SHELL_COVERAGE_KCOV_CONFIG:-bash-use-basic-parser=1}"
+SHELL_COVERAGE_STRICT="${SHELL_COVERAGE_STRICT:-false}"
+SHELL_COVERAGE_TIMEOUT_SECONDS="${SHELL_COVERAGE_TIMEOUT_SECONDS:-120}"
+SHELL_COVERAGE_INCLUDE_PATHS="${SHELL_COVERAGE_INCLUDE_PATHS:-}"
 SQL_TESTS_DIR="${SQL_TESTS_DIR:-}"
 RUN_PYTEST_COVERAGE="${RUN_PYTEST_COVERAGE:-true}"
 COVERAGE_REPORT_DIR="${COVERAGE_REPORT_DIR:-./artifacts/coverage}"
 COVERAGE_SOURCE_DIRS="${COVERAGE_SOURCE_DIRS:-${PYTHON_SRC_DIRS:-}}"
 COVERAGE_FAIL_UNDER="${COVERAGE_FAIL_UNDER:-}"
+SHELL_COVERAGE_REPORT_DIR="${SHELL_COVERAGE_REPORT_DIR:-${COVERAGE_REPORT_DIR}/shell}"
 
 if [[ "$RUN_SQL_TESTS" == "true" && -z "$SQL_TESTS_DIR" ]]; then
   if [[ ! -d "./tests/sql" && ! -d "./tests/sql/sqlite" ]]; then
@@ -77,7 +84,7 @@ load_profile_exports_from_file() {
   set +a
 }
 
-profile_exports_file="$(mktemp)"
+profile_exports_file="$(mktemp "${TMPDIR:-/tmp}/runbook-profile-exports.XXXXXX")"
 if ! "$DB_PROFILE_HELPER" >"$profile_exports_file"; then
   #R035: Refuse SQL lane preflight when DB profile setup is missing.
   rm -f "$profile_exports_file"
@@ -164,6 +171,164 @@ run_single_bats_file() {
   fi
 }
 
+#R001: function tag for shell_coverage_label_for_bats_file
+shell_coverage_label_for_bats_file() {
+  local bats_file="$1"
+  local relative_path
+  if [[ "$bats_file" == "$RUNBOOK_REPO_ROOT/"* ]]; then
+    relative_path="${bats_file#"${RUNBOOK_REPO_ROOT}"/}"
+  elif [[ "$bats_file" == "$RUNNER_HOME/"* ]]; then
+    relative_path="runner/${bats_file#"${RUNNER_HOME}"/}"
+  else
+    relative_path="$(basename "$bats_file")"
+  fi
+  printf '%s' "$relative_path" | sed -E 's#[^A-Za-z0-9._-]+#_#g; s#_+#_#g; s#^_##; s#_$##'
+}
+
+#R001: function tag for run_single_bats_file_with_coverage
+run_single_bats_file_with_coverage() {
+  local bats_file="$1"
+  local coverage_prefix="$2"
+  local coverage_label coverage_output_dir coverage_stderr_log coverage_output_log
+  local -a coverage_tool_args=()
+  local -a coverage_cmd=()
+  local -a coverage_exec_cmd=()
+  local -a bats_env_unsets=(
+    -u TELLER_DB_PASSWORD
+    -u DB_PASSWORD
+    -u DB_DIALECT
+    -u PROFILE_NAME
+    -u PROFILE_TARGET
+    -u PG_HOST
+    -u PG_PORT
+    -u PG_DBNAME
+    -u PG_USER
+    -u PG_SSLMODE
+    -u PG_SEARCH_PATH
+    -u PG_RUNTIME_ROLE
+    -u PG_ONEPSA_ITEM
+    -u SQLITE_PATH
+    -u SQLCIPHER_KEY
+    -u TELLER_DB_HOST
+    -u TELLER_DB_PORT
+    -u TELLER_DB_NAME
+    -u TELLER_DB_USER
+    -u TELLER_DB_SQLITE_PATH
+    -u TELLER_DB_SQLCIPHER_KEY
+  )
+  coverage_label="$(shell_coverage_label_for_bats_file "$bats_file")"
+  coverage_output_dir="${SHELL_COVERAGE_REPORT_DIR}/${coverage_prefix}_${coverage_label}"
+  if [[ "$(basename "$SHELL_COVERAGE_TOOL")" == "kcov" && -n "${SHELL_COVERAGE_KCOV_CONFIG:-}" ]]; then
+    coverage_tool_args+=( --configure "$SHELL_COVERAGE_KCOV_CONFIG" )
+  fi
+  coverage_cmd=(
+    "$SHELL_COVERAGE_TOOL"
+    "${coverage_tool_args[@]}"
+    --clean
+  )
+  if [[ -n "${SHELL_COVERAGE_INCLUDE_PATHS_RESOLVED:-}" ]]; then
+    coverage_cmd+=( --include-path "$SHELL_COVERAGE_INCLUDE_PATHS_RESOLVED" )
+  fi
+  coverage_cmd+=(
+    "$coverage_output_dir"
+    bats
+  )
+  if [[ -n "$BATS_FILTER" ]]; then
+    coverage_cmd+=( --filter "$BATS_FILTER" )
+  fi
+  coverage_cmd+=( "$bats_file" )
+  coverage_exec_cmd=( env "${bats_env_unsets[@]}" "${coverage_cmd[@]}" )
+  coverage_stderr_log="${coverage_output_dir}.kcov.stderr.log"
+  coverage_output_log="${coverage_output_dir}.kcov.output.log"
+  SHELL_COVERAGE_LAST_STDERR_LOG="$coverage_stderr_log"
+  SHELL_COVERAGE_LAST_OUTPUT_LOG="$coverage_output_log"
+  export SHELL_COVERAGE_LAST_STDERR_LOG
+  export SHELL_COVERAGE_LAST_OUTPUT_LOG
+  if [[ "$SHELL_COVERAGE_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] && [[ "$SHELL_COVERAGE_TIMEOUT_SECONDS" -gt 0 ]]; then
+    if ! python3 - "$coverage_output_log" "$SHELL_COVERAGE_TIMEOUT_SECONDS" "${coverage_exec_cmd[@]}" <<'PY'
+import subprocess
+import sys
+
+output_path = sys.argv[1]
+timeout_seconds = int(sys.argv[2])
+command = sys.argv[3:]
+
+with open(output_path, "wb") as stream:
+    try:
+        completed = subprocess.run(
+            command,
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        stream.write(
+            f"\n⚠️ Shell coverage command timed out after {timeout_seconds}s.\n".encode("utf-8")
+        )
+        sys.exit(124)
+
+sys.exit(completed.returncode)
+PY
+    then
+      cp "$coverage_output_log" "$coverage_stderr_log" 2>/dev/null || true
+      return 1
+    fi
+  else
+    if ! "${coverage_exec_cmd[@]}" >"$coverage_output_log" 2>&1; then
+      cp "$coverage_output_log" "$coverage_stderr_log" 2>/dev/null || true
+      return 1
+    fi
+  fi
+}
+
+#R001: function tag for resolve_shell_coverage_include_paths
+resolve_shell_coverage_include_paths() {
+  local spec normalized root bats_bin bats_root
+  local seen=$'\n'
+  local -a roots=()
+  spec="${SHELL_COVERAGE_INCLUDE_PATHS:-}"
+  if [[ -z "${spec// }" ]]; then
+    spec="${RUNBOOK_REPO_ROOT},${RUNNER_HOME}"
+    if bats_bin="$(command -v bats 2>/dev/null)"; then
+      bats_root="$(python3 - <<'PY' "$bats_bin"
+import os
+import sys
+
+path = os.path.realpath(sys.argv[1])
+print(os.path.realpath(os.path.join(os.path.dirname(path), "..")))
+PY
+)"
+      if [[ -n "$bats_root" ]]; then
+        spec="${spec},${bats_root}"
+      fi
+    fi
+  fi
+  normalized="${spec//:/ }"
+  normalized="${normalized//,/ }"
+  for root in $normalized; do
+    [[ -n "$root" ]] || continue
+    if [[ "$root" != /* ]]; then
+      root="${REPO_ROOT}/${root#./}"
+    fi
+    if [[ ! -d "$root" ]]; then
+      continue
+    fi
+    root="$(cd "$root" && pwd -P)"
+    case "$seen" in
+      *$'\n'"$root"$'\n'*) continue ;;
+    esac
+    seen+="${root}"$'\n'
+    roots+=("$root")
+  done
+  if [[ "${#roots[@]}" -eq 0 ]]; then
+    SHELL_COVERAGE_INCLUDE_PATHS_RESOLVED=""
+  else
+    SHELL_COVERAGE_INCLUDE_PATHS_RESOLVED="$(IFS=,; echo "${roots[*]}")"
+  fi
+  export SHELL_COVERAGE_INCLUDE_PATHS_RESOLVED
+}
+
 #R001: function tag for collect_bats_files
 collect_bats_files() {
   local roots_spec normalized root candidate
@@ -230,7 +395,7 @@ if [[ -d "./${VENV_NAME}" ]] && [[ -f "./${VENV_NAME}/bin/activate" ]]; then
   if ! python_interpreter_usable "./${VENV_NAME}/bin/python"; then
     echo "⚠️  Skipping ${VENV_NAME} activation because its interpreter is not usable."
   else
-  # shellcheck disable=SC1091
+  # shellcheck disable=SC1090,SC1091
     source "./${VENV_NAME}/bin/activate"
   fi
 fi
@@ -240,9 +405,40 @@ if [[ "$RUN_SHELL_TESTS" == "true" ]]; then
     echo "❌ bats is required for shell unit tests. Install bats-core and rerun."
     exit 1
   fi
+  if [[ "$RUN_SHELL_COVERAGE" == "true" ]]; then
+    if ! command -v "$SHELL_COVERAGE_TOOL" >/dev/null 2>&1; then
+      echo "❌ ${SHELL_COVERAGE_TOOL} is required when RUN_SHELL_COVERAGE=true."
+      echo "Install ${SHELL_COVERAGE_TOOL} and rerun (for Homebrew: brew install ${SHELL_COVERAGE_TOOL})."
+      exit 1
+    fi
+    resolve_shell_coverage_include_paths
+  fi
   collect_bats_files
   if [[ "${#bats_files[@]}" -eq 0 ]]; then
     echo "ℹ️  Skipping shell unit tests: no *.bats files found in SHELL_BATS_ROOTS='${SHELL_BATS_ROOTS:-./tests/sh}'."
+  elif [[ "$RUN_SHELL_COVERAGE" == "true" ]]; then
+    mkdir -p "$SHELL_COVERAGE_REPORT_DIR"
+    echo "▶ Running shell unit tests (bats + ${SHELL_COVERAGE_TOOL}, serial coverage mode)..."
+    coverage_index=0
+    for bats_file in "${bats_files[@]}"; do
+      run_single_bats_file "$bats_file"
+      coverage_index=$((coverage_index + 1))
+      coverage_prefix="$(printf '%03d' "$coverage_index")"
+      if ! run_single_bats_file_with_coverage "$bats_file" "$coverage_prefix"; then
+        if [[ "$SHELL_COVERAGE_STRICT" == "true" ]]; then
+          if [[ -s "${SHELL_COVERAGE_LAST_STDERR_LOG:-}" ]]; then
+            cat "${SHELL_COVERAGE_LAST_STDERR_LOG}" >&2
+          fi
+          echo "❌ Shell coverage collection failed for ${bats_file}."
+          exit 1
+        fi
+        echo "⚠️  Shell coverage collection failed for ${bats_file}; continuing (set SHELL_COVERAGE_STRICT=true to fail)."
+        if [[ -n "${SHELL_COVERAGE_LAST_STDERR_LOG:-}" ]]; then
+          echo "   Coverage stderr log: ${SHELL_COVERAGE_LAST_STDERR_LOG}"
+        fi
+      fi
+    done
+    echo "Shell coverage reports: ${SHELL_COVERAGE_REPORT_DIR}"
   else
     resolve_bats_jobs
     if [[ "$BATS_JOBS_RESOLVED" -le 1 || "${#bats_files[@]}" -le 1 ]]; then

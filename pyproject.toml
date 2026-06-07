@@ -1,0 +1,15 @@
+[tool.mutmut]
+paths_to_mutate = ["tests/py/traceability/"]
+only_mutate = [
+  "tests/py/traceability/cli.py",
+  "tests/py/traceability/discovery.py",
+  "tests/py/traceability/parsing.py",
+  "tests/py/traceability/verification.py",
+]
+tests_dir = [
+  "tests/py/test_cli.py",
+  "tests/py/test_discovery.py",
+  "tests/py/test_parsing.py",
+  "tests/py/test_verification.py",
+]
+pytest_add_cli_args = ["-p", "no:hypothesis"]

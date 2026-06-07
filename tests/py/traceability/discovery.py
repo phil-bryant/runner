@@ -213,6 +213,10 @@ def discover_test_files_for_requirements(
         if ext == ".py":
             if source_norm.startswith("src/teller/"):
                 add_path(f"tests/py/test_{stem}.py", "default")
+            elif source_norm.startswith("tests/py/traceability/"):
+                add_path(f"tests/py/test_{stem}.py", "default")
+                if stem == "parsing":
+                    add_path("tests/py/properties/test_traceability_properties.py", "default")
             elif source_norm.startswith(tuple(f"{n:02d}_" for n in range(100))):
                 add_shell_test(stem)
             else:

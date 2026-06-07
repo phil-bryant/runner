@@ -126,7 +126,7 @@ init_gpg_home() {
     if [[ -n "$GPG_HOME" ]]; then
         return
     fi
-    GPG_HOME="$(mktemp -d)"
+    GPG_HOME="$(mktemp -d "${TMPDIR:-/tmp}/runbook-gpg-home.XXXXXX")"
     cleanup_paths+=("$GPG_HOME")
     chmod 700 "$GPG_HOME"
 }
@@ -142,7 +142,7 @@ encrypt_artifact() {
     rm -f "$source_path"
 }
 
-profile_exports_file="$(mktemp)"
+profile_exports_file="$(mktemp "${TMPDIR:-/tmp}/runbook-profile-exports.XXXXXX")"
 if ! "$DB_PROFILE_HELPER" >"$profile_exports_file"; then
     rm -f "$profile_exports_file"
     exit 1
@@ -175,7 +175,7 @@ if [[ -z "$BACKUP_GPG_PUBLIC_KEY" ]]; then
     exit 1
 fi
 init_gpg_home
-BACKUP_GPG_PUBLIC_KEY_PATH="$(mktemp)"
+BACKUP_GPG_PUBLIC_KEY_PATH="$(mktemp "${TMPDIR:-/tmp}/runbook-backup-gpg-key.XXXXXX")"
 cleanup_paths+=("$BACKUP_GPG_PUBLIC_KEY_PATH")
 printf '%s\n' "$BACKUP_GPG_PUBLIC_KEY" >"$BACKUP_GPG_PUBLIC_KEY_PATH"
 gpg --batch --yes --homedir "$GPG_HOME" --import "$BACKUP_GPG_PUBLIC_KEY_PATH" >/dev/null 2>&1
@@ -208,7 +208,7 @@ fi
 #R045: Managed-target backup uses the profile's connection user and the direct (non-pooler) host.
 if [[ "${PROFILE_TARGET:-local}" == "managed" ]]; then
     if [[ "$PROFILE_NAME" != "supabase_direct" && -x "$DB_PROFILE_HELPER" ]]; then
-        profile_exports_file="$(mktemp)"
+        profile_exports_file="$(mktemp "${TMPDIR:-/tmp}/runbook-profile-exports.XXXXXX")"
         if ! "$DB_PROFILE_HELPER" --profile supabase_direct >"$profile_exports_file"; then
             rm -f "$profile_exports_file"
             exit 1

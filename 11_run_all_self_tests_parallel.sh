@@ -5,5 +5,6 @@
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/./src/scripts" && pwd -P)/pointer_shim.sh"
 #R005: Select the runner self-run runbook profile before delegation.
 select_runbook_profile "runner"
+#R015: Self-run profile allowlist includes t06/t07/t08 engine lanes through runner.env.
 #R010: Delegate to the parallel-orchestrator golden with argument passthrough.
 delegate_golden "07_run_all_tests_parallel.sh" "$@"

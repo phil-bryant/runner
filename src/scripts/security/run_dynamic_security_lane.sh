@@ -7,7 +7,6 @@ SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/common.sh"
 security_init_repo_root "$SCRIPT_PATH"
-REPO_ROOT="${SECURITY_REPO_ROOT}"
 echo "running DAST (Dynamic Application Security Testing)"
 
 #R005: Runner-owned engine code/SQL resolved repo-override-else-runner; app + DB integration are knobs.
@@ -55,7 +54,7 @@ if [[ -d "./${VENV_NAME}" ]] && [[ -f "./${VENV_NAME}/bin/activate" ]]; then
   if ! python_interpreter_usable "./${VENV_NAME}/bin/python"; then
     echo "⚠️  Skipping ${VENV_NAME} activation because its interpreter is not usable."
   else
-  # shellcheck disable=SC1091
+  # shellcheck disable=SC1090,SC1091
     source "./${VENV_NAME}/bin/activate"
   fi
 fi
@@ -1182,6 +1181,8 @@ PY
     # limited). DAST is a test workflow, exactly the case the env-token fallback guard is intended for;
     # apps that do not read these vars (e.g. mailcart/matchy) simply ignore them.
     TELLER_CLASSIFIER_WRITE_TOKEN="$dast_write_token" \
+      MAILCART_API_WRITE_TOKEN="$dast_write_token" \
+      MATCHY_API_AUTH_TOKEN="$dast_write_token" \
       CLASSY_ALLOW_ENV_WRITE_TOKEN="true" CLASSY_WRITE_TOKEN="$dast_write_token" \
       TELLER_CLASSIFIER_API_HOST="$base_host" TELLER_CLASSIFIER_API_PORT="$base_port" \
       CLASSIFICATION_API_HOST="$base_host" CLASSIFICATION_API_PORT="$base_port" \

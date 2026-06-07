@@ -16,6 +16,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import shlex
@@ -46,6 +47,12 @@ def normalize_pypi_name(name: str) -> str:
 def build_purl(name: str, version: str) -> str:
     #R115: Build CycloneDX-compatible purl identifiers for components.
     return f"pkg:pypi/{normalize_pypi_name(name)}@{version}"
+
+
+def normalize_project_name(name: str) -> str:
+    #R115: Normalize project identity for SBOM metadata fields.
+    normalized = re.sub(r"[^A-Za-z0-9_.-]+", "-", name).strip("-").lower()
+    return normalized or "project"
 
 
 def parse_pinned_requirements(path: pathlib.Path) -> list[dict[str, object]]:
@@ -181,11 +188,13 @@ def fetch_component_licenses(name: str, version: str, timeout: float = 5.0) -> l
 def build_cyclonedx(
     runtime_components: list[dict[str, object]],
     security_components: list[dict[str, object]],
+    project_name: str,
 ) -> dict:
     #R110: Build CycloneDX SBOM payload from parsed lockfile components.
     #R115: Enrich components with purl, hashes, scope, and license metadata.
     timestamp = dt.datetime.now(dt.timezone.utc).isoformat()
     serial_number = f"urn:uuid:{uuid.uuid4()}"
+    normalized_project_name = normalize_project_name(project_name)
     components = []
     for pkg in merge_components(runtime_components, security_components):
         name = str(pkg["name"])
@@ -218,13 +227,13 @@ def build_cyclonedx(
             "timestamp": timestamp,
             "component": {
                 "type": "application",
-                "name": "teller",
-                "bom-ref": "pkg:generic/teller@0",
-                "purl": "pkg:generic/teller@0",
+                "name": normalized_project_name,
+                "bom-ref": f"pkg:generic/{normalized_project_name}@0",
+                "purl": f"pkg:generic/{normalized_project_name}@0",
             },
             "tools": [
                 {
-                    "vendor": "teller",
+                    "vendor": normalized_project_name,
                     "name": "generate_supply_chain_artifacts.py",
                     "version": "1",
                 }
@@ -241,10 +250,7 @@ def write_json(path: pathlib.Path, payload: dict) -> None:
 
 def has_command(command: str) -> bool:
     #R120: Detect signing tool availability before cosign invocation paths.
-    return subprocess.run(
-        ["bash", "-lc", f"command -v {command} >/dev/null 2>&1"],
-        check=False,
-    ).returncode == 0
+    return shutil.which(command) is not None
 
 
 def _run_cosign_sign_blob(
@@ -344,12 +350,13 @@ def main(argv: Iterable[str]) -> int:
     security_components = parse_pinned_requirements(security_lock)
     if not runtime_components and not security_components:
         raise SystemExit("No pinned components discovered from lockfiles.")
+    project_name = pathlib.Path.cwd().name
 
     sbom_path = output_dir / "sbom.cdx.json"
     signature_path = output_dir / "sbom.signature"
     attestation_path = output_dir / "sbom.attestation.json"
 
-    sbom_payload = build_cyclonedx(runtime_components, security_components)
+    sbom_payload = build_cyclonedx(runtime_components, security_components, project_name)
     write_json(sbom_path, sbom_payload)
 
     sbom_sha = sha256_file(sbom_path)

@@ -23,3 +23,11 @@ setup() {
   #R010-T01: pointer delegates to 07_run_all_tests_parallel.sh with "$@"
   grep -q 'delegate_golden "07_run_all_tests_parallel.sh" "\$@"' "$POINTER"
 }
+
+@test "runner self-run allowlist includes t06/t07/t08 engine lanes" {
+  #R015-T01: runner profile allowlist includes python unit, mutation, and fuzz lanes.
+  RUNNER_ENV="${REPO_ROOT}/config/runbook/runner.env"
+  grep -q 't06_run_python_unit_tests' "$RUNNER_ENV"
+  grep -q 't07_run_mutation_tests' "$RUNNER_ENV"
+  grep -q 't08_run_fuzz_tests' "$RUNNER_ENV"
+}

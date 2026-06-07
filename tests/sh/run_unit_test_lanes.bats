@@ -57,6 +57,74 @@ teardown() {
   [[ "$output" != *"crash"* ]]
 }
 
+@test "fails fast when shell coverage is requested and kcov is missing" {
+  #R005-T02: Verify RUN_SHELL_COVERAGE=true requires a resolvable kcov binary before shell lane execution.
+  cat > "${STUB_BIN}/bats" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/bats"
+
+  run env PATH="${STUB_BIN}:${PATH}" \
+    RUNBOOK_REPO_ROOT="$RUNNER" \
+    RUN_SHELL_TESTS=true RUN_SHELL_COVERAGE=true SHELL_COVERAGE_TOOL=kcov-missing \
+    RUN_PYTHON_TESTS=false RUN_SQL_TESTS=false RUN_SWIFT_TESTS=false \
+    bash "$LANES"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"kcov-missing is required when RUN_SHELL_COVERAGE=true"* ]]
+}
+
+@test "shell coverage mode wraps bats in kcov with deterministic report directories" {
+  #R005-T03: Verify shell coverage mode executes Bats through kcov and writes prefixed deterministic output directories.
+  mkdir -p "${RUNNER}/tests/sh"
+  cat > "${RUNNER}/tests/sh/alpha.bats" <<'EOF'
+@test "alpha" { true; }
+EOF
+  cat > "${RUNNER}/tests/sh/zed.bats" <<'EOF'
+@test "zed" { true; }
+EOF
+
+  cat > "${STUB_BIN}/bats" <<EOF
+#!/usr/bin/env bash
+echo "bats:\$*" >> "${CALLS_LOG}"
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/bats"
+
+  cat > "${STUB_BIN}/kcov" <<EOF
+#!/usr/bin/env bash
+echo "kcov:\$*" >> "${CALLS_LOG}"
+outdir=""
+prev=""
+for arg in "\$@"; do
+  if [[ "\$arg" == "bats" ]]; then
+    outdir="\$prev"
+    break
+  fi
+  prev="\$arg"
+done
+mkdir -p "\$outdir"
+touch "\$outdir/index.html"
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/kcov"
+
+  run env PATH="${STUB_BIN}:${PATH}" \
+    RUNBOOK_REPO_ROOT="$RUNNER" \
+    RUN_SHELL_TESTS=true RUN_SHELL_COVERAGE=true \
+    RUN_PYTHON_TESTS=false RUN_SQL_TESTS=false RUN_SWIFT_TESTS=false \
+    BATS_FILTER="alpha" \
+    SHELL_COVERAGE_REPORT_DIR="${RUNNER}/artifacts/coverage/shell" \
+    bash "$LANES"
+  [ "$status" -eq 0 ]
+  calls="$(<"${CALLS_LOG}")"
+  [[ "$calls" == *"kcov:--configure bash-use-basic-parser=1 --clean --include-path ${RUNNER},${FIXTURE}"* ]]
+  [[ "$calls" == *"001_tests_sh_alpha.bats bats --filter alpha"* ]]
+  [[ "$calls" == *"002_tests_sh_zed.bats bats --filter alpha"* ]]
+  [[ "$calls" == *"001_"* ]]
+  [[ "$calls" == *"002_"* ]]
+}
+
 @test "fails fast when db profile helper is missing" {
   #R005-T01: Verify SQL preflight failures surface clear diagnostics and block SQL test execution.
   #R015-T01: Verify helper exits non-zero when an enabled lane command returns failure.

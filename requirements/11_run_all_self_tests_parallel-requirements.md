@@ -25,6 +25,12 @@ Design: Call `delegate_golden "07_run_all_tests_parallel.sh" "$@"` so the shim e
 Tests:
 - R010-T01: Verify the pointer delegates to `07_run_all_tests_parallel.sh` with `"$@"`.
 
+R015  Statement: Runner self-run profile allowlist includes engine unit, mutation, and fuzz lanes.
+Design: `config/runbook/runner.env` sets `RUN_LANE_ALLOWLIST` to include `t06_run_python_unit_tests`, `t07_run_mutation_tests`, and `t08_run_fuzz_tests` for dogfooding engine rigor.
+Tests:
+- R015-T01: Verify the runner profile allowlist includes t06/t07/t08 lane names.
+
 ## Changelog
 
 - 2026-06-06: Converted from `Requirements-only mode: true` to a full thin-pointer doc + thin test, per the policy that delegating scripts use thin pointer docs (never requirements-only) to cover their delegation contract.
+- 2026-06-07: Added R015 self-run allowlist coverage for t06/t07/t08 engine lanes.

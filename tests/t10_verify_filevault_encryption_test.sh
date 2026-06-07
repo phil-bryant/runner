@@ -11,6 +11,10 @@ REPO_ROOT="$RUNBOOK_REPO_ROOT"
 cd "$REPO_ROOT"
 
 FILEVAULT_STATUS_CMD="${FILEVAULT_STATUS_CMD:-fdesetup status}"
+if [[ "$FILEVAULT_STATUS_CMD" != "fdesetup status" ]]; then
+  echo "❌ FILEVAULT_STATUS_CMD must remain 'fdesetup status'."
+  exit 1
+fi
 
 #R010: Require macOS for FileVault verification.
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -19,14 +23,14 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 #R015: Require a FileVault status command before enforcement.
-if [[ "$FILEVAULT_STATUS_CMD" == "fdesetup status" ]] && ! command -v fdesetup >/dev/null 2>&1; then
+if ! command -v fdesetup >/dev/null 2>&1; then
   echo "❌ fdesetup is required for FileVault verification."
   exit 1
 fi
 
 echo "▶ Checking FileVault encryption status..."
 set +e
-filevault_status="$($FILEVAULT_STATUS_CMD 2>&1)"
+filevault_status="$(fdesetup status 2>&1)"
 filevault_exit=$?
 set -e
 

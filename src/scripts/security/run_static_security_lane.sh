@@ -44,6 +44,7 @@ PIP_AUDIT_MIN_SECURE_PIP_VERSION="${PIP_AUDIT_MIN_SECURE_PIP_VERSION:-26.1}"
 BOOTSTRAP_PIP_VERSION="${BOOTSTRAP_PIP_VERSION:-26.1.2}"
 BOOTSTRAP_PIP_SHA256="${BOOTSTRAP_PIP_SHA256:-382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab}"
 #R055: Semgrep currently constrains PyJWT to 2.12.x; ignore known CVEs until upstream allows a fixed major.
+#R055: Review-by date is time-bounded in docs/security/dependency-vuln-exceptions.md.
 PIP_AUDIT_IGNORE_VULNS="${PIP_AUDIT_IGNORE_VULNS:-CVE-2026-48522,CVE-2026-48524,CVE-2026-48525,CVE-2026-48526}"
 #R105: Runner-owned security lockfile (repo override else runner default).
 SECURITY_REQUIREMENTS_FILE="${SECURITY_REQUIREMENTS_FILE:-$(security_resolve_asset requirements/security/requirements-security.txt)}"
@@ -80,7 +81,7 @@ if [[ -d "./${VENV_NAME}" ]] && [[ -f "./${VENV_NAME}/bin/activate" ]]; then
   if ! python_interpreter_usable "./${VENV_NAME}/bin/python"; then
     echo "⚠️  Skipping ${VENV_NAME} activation because its interpreter is not usable."
   else
-  # shellcheck disable=SC1091
+  # shellcheck disable=SC1090,SC1091
     source "./${VENV_NAME}/bin/activate"
   fi
 fi
@@ -113,8 +114,22 @@ import sys
 mode = sys.argv[1]
 path = sys.argv[2]
 
-with open(path, "r", encoding="utf-8") as fh:
-    payload = json.load(fh)
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        raw = fh.read().strip()
+except FileNotFoundError:
+    print(0)
+    raise SystemExit(0)
+
+if not raw:
+    print(0)
+    raise SystemExit(0)
+
+try:
+    payload = json.loads(raw)
+except json.JSONDecodeError:
+    print(0)
+    raise SystemExit(0)
 
 count = 0
 if mode == "semgrep":
@@ -421,8 +436,14 @@ run_shellcheck_sast() {
     "Runs JSON-reporting checks across numbered shell automation scripts." \
     "https://www.shellcheck.net/"
   shopt -s nullglob
-  shellcheck_targets=(./[0-9][0-9]_*.sh ./t[0-9][0-9]_*.sh)
+  shellcheck_targets=(
+    ./[0-9][0-9]_*.sh
+    ./t[0-9][0-9]_*.sh
+  )
   shopt -u nullglob
+  while IFS= read -r shell_target; do
+    shellcheck_targets+=("$shell_target")
+  done < <(find ./src/scripts -type f -name "*.sh" | sort)
 
   if [[ "${#shellcheck_targets[@]}" -eq 0 ]]; then
     printf '[]\n' > "$shellcheck_report"
@@ -976,9 +997,8 @@ if [[ "$RUN_SAST" == "true" ]]; then
     "Flags known insecure coding patterns and risky API usage." \
     "https://bandit.readthedocs.io/"
   echo "▶ Running Bandit"
-  #R050: Autodiscover Python app targets: src/<package> dirs (excluding tooling `scripts` and Swift
-  #R050: `macos-ui`), tests/py, and numbered root scripts. Matches teller's intent without scanning
-  #R050: runner-owned tooling copies under src/scripts.
+  #R050: Autodiscover Python app targets: src/<package> dirs (excluding Swift
+  #R050: `macos-ui`), tests/py, and numbered root scripts.
   bandit_targets=()
   if [[ -n "${PYTHON_SRC_DIRS:-}" ]]; then
     # Explicit app source dirs (e.g. matchy's top-level ./matchy package).
@@ -988,7 +1008,7 @@ if [[ "$RUN_SAST" == "true" ]]; then
   elif [[ -d ./src ]]; then
     for bandit_src_sub in ./src/*/; do
       bandit_src_base="$(basename "$bandit_src_sub")"
-      [[ "$bandit_src_base" == "scripts" || "$bandit_src_base" == "macos-ui" ]] && continue
+      [[ "$bandit_src_base" == "macos-ui" ]] && continue
       [[ -n "$(find "$bandit_src_sub" -name '*.py' -print 2>/dev/null | head -n 1)" ]] && bandit_targets+=("${bandit_src_sub%/}")
     done
   fi
@@ -1048,10 +1068,18 @@ if [[ "$RUN_SAST" == "true" ]]; then
     "Helps catch accidentally committed credentials before release." \
     "https://github.com/Yelp/detect-secrets"
   echo "▶ Running detect-secrets"
+  detect_secrets_baseline="${DETECT_SECRETS_BASELINE_FILE:-./.secrets.baseline}"
+  detect_secrets_cmd=(
+    detect-secrets scan
+    --all-files
+    --force-use-all-plugins
+    --exclude-files "(^\.git/|^\.security-reports/|^\.cursor/|^${VENV_NAME}/|^[^/]+-venv/|^\.venv/|^\.build/|^artifacts/|^\.ruff_cache/|^\.pytest_cache/|^__pycache__/|^backups/|^archive/backup_extracts/|^README\.md\$|^config/bank_statements/|^config/security/binary-integrity-policy\.json\$|^tests/sh/99_restore_database\.bats\$|^src/macos-ui/\.derivedData-ui-tests/|^src/macos-ui/\.build/|^requirements/|^classy/|^mailcart/|^matchy/|^runner/|^teller/|(^|.*/)\.security-reports/|(^|.*/)\.cursor/|(^|.*/)artifacts/|(^|.*/)\.build/|(^|.*/)\.derivedData-ui-tests/|(^|.*/)\.ruff_cache/|(^|.*/)\.pytest_cache/|(^|.*/)__pycache__/|(^|.*/)[^/]+-venv/|(^|.*/)\.venv/)"
+  )
+  if [[ -f "$detect_secrets_baseline" ]]; then
+    detect_secrets_cmd+=(--baseline "$detect_secrets_baseline")
+  fi
   set +e
-  detect-secrets scan --all-files --force-use-all-plugins \
-    --exclude-files "(^\.git/|^\.security-reports/|^\.cursor/|^${VENV_NAME}/|^[^/]+-venv/|^\.venv/|^\.build/|^artifacts/|^\.ruff_cache/|^\.pytest_cache/|^__pycache__/|^backups/|^archive/backup_extracts/|^README\.md\$|^config/bank_statements/|^config/security/binary-integrity-policy\.json\$|^tests/sh/99_restore_database\.bats\$|^src/macos-ui/\.derivedData-ui-tests/|^src/macos-ui/\.build/|^requirements/)" \
-    > "${REPORT_DIR}/detect-secrets.json"
+  "${detect_secrets_cmd[@]}" > "${REPORT_DIR}/detect-secrets.json"
   DETECT_SECRETS_EXIT=$?
   set -e
   if [[ "$DETECT_SECRETS_EXIT" -ne 0 ]]; then

@@ -67,7 +67,7 @@ is_valid_pg_identifier() {
     [[ "$identifier" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]]
 }
 
-profile_exports_file="$(mktemp)"
+profile_exports_file="$(mktemp "${TMPDIR:-/tmp}/runbook-profile-exports.XXXXXX")"
 if ! "$DB_PROFILE_HELPER" >"$profile_exports_file"; then
     rm -f "$profile_exports_file"
     exit 1
@@ -132,7 +132,7 @@ fi
 if [[ "${PROFILE_TARGET:-local}" == "managed" ]]; then
     #R060: Re-resolve using the direct (non-pooler) profile for DDL apply.
     if [[ "$PROFILE_NAME" != "supabase_direct" && -x "$DB_PROFILE_HELPER" ]]; then
-        profile_exports_file="$(mktemp)"
+        profile_exports_file="$(mktemp "${TMPDIR:-/tmp}/runbook-profile-exports.XXXXXX")"
         if ! "$DB_PROFILE_HELPER" --profile supabase_direct >"$profile_exports_file"; then
             rm -f "$profile_exports_file"
             exit 1
