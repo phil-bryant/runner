@@ -29,10 +29,11 @@ Tests:
 - R010-T02: Verify the source fails non-zero with a "no numbered test scripts found" message when nothing is discovered.
 
 R011  Statement: Support an opt-in "runners" discovery mode that orchestrates per-repo run-all pointers instead of tNN lanes.
-Design: When `PARALLEL_CHECKS_RUNNERS_MODE=true`, discover lanes shallowly across repo roots (`find . -maxdepth "$RUNNERS_DISCOVERY_MAXDEPTH" -name "$RUNNERS_DISCOVERY_GLOB" -type f -perm -u=x`, default glob `[0-9][0-9]_run_all_*tests_parallel.sh`) so lanes are repo-relative paths; resolve each token through `lane_script_path` (path) and `lane_log_label` (slashes→dashes, so same-basename pointers across repos get distinct logs); and unset the runners-mode/meta-only env (`PARALLEL_CHECKS_RUNNERS_MODE`, `RUNNERS_DISCOVERY_GLOB`, `RUNNERS_DISCOVERY_MAXDEPTH`, `PARALLEL_CHECKS_REPORT_DIR`, `QUALITY_SCORING_ENABLED`) in the worker before exec so each child run-all pointer runs in normal tNN mode, in its own report dir, with its own scoring. Default mode (`false`) preserves the historical `./tests` tNN behavior byte-for-byte.
+Design: When `PARALLEL_CHECKS_RUNNERS_MODE=true`, discover lanes shallowly across repo roots (`find . -maxdepth "$RUNNERS_DISCOVERY_MAXDEPTH" -name "$RUNNERS_DISCOVERY_GLOB" -type f -perm -u=x`, default glob `[0-9][0-9]_run_all_*tests_parallel.sh`) so lanes are repo-relative paths; resolve each token through `lane_script_path` (path) and `lane_log_label` (slashes→dashes, so same-basename pointers across repos get distinct logs); forward top-level optional skip/serialize flags (`--no-ui`, `--no-mutation`, `--no-av`, `--serialize-ui-mutation`) to delegated `*_run_all_*tests_parallel.sh` child pointers; and unset the runners-mode/meta-only env (`PARALLEL_CHECKS_RUNNERS_MODE`, `RUNNERS_DISCOVERY_GLOB`, `RUNNERS_DISCOVERY_MAXDEPTH`, `PARALLEL_CHECKS_REPORT_DIR`, `QUALITY_SCORING_ENABLED`) in the worker before exec so each child run-all pointer runs in normal tNN mode, in its own report dir, with its own scoring. Default mode (`false`) preserves the historical `./tests` tNN behavior byte-for-byte.
 Tests:
 - R011-T01: Verify the source gates a shallow `find`-based runners discovery on `PARALLEL_CHECKS_RUNNERS_MODE` with the `[0-9][0-9]_run_all_*tests_parallel.sh` glob.
 - R011-T02: Verify the worker resolves lanes via `lane_script_path`/`lane_log_label` and unsets `PARALLEL_CHECKS_RUNNERS_MODE` before running a child lane.
+- R011-T03: Verify delegated `*_run_all_*tests_parallel.sh` lanes receive forwarded top-level skip/serialize flags.
 
 R012  Statement: Support a dry-run that lists the resolved lane set without executing anything.
 Design: When `PARALLEL_CHECKS_LIST_ONLY=1`, after discovery and the existence check, print each lane's `lane_log_label` and `lane_script_path` (tab separated) and `exit 0` before opening the completion FIFO or launching lanes.
@@ -92,10 +93,11 @@ Tests:
 - R060-T01: Verify the source prints a `Timing: wall ...; long pole ...` line.
 
 R065  Statement: Support optional lane-skip CLI flags.
-Design: Parse `--no-ui`, `--no-mutation`, and `--no-av` (plus `-h|--help`) before discovery; filter discovered lanes matching the configurable `UI_REGRESSION_PATTERN`/`MUTATION_LANE_PATTERN`/`AV_LANE_PATTERN` content patterns, export skipped lane stems via `PARALLEL_CHECKS_SKIPPED_LANES`, and reject unknown arguments with usage guidance.
+Design: Parse `--no-ui`, `--no-mutation`, and `--no-av` (plus `-h|--help`) before discovery; filter discovered lanes matching the configurable `UI_REGRESSION_PATTERN`/`MUTATION_LANE_PATTERN`/`AV_LANE_PATTERN` content patterns, iterate skipped stems using a nounset-safe empty-array expansion, export skipped lane stems via `PARALLEL_CHECKS_SKIPPED_LANES`, and reject unknown arguments with usage guidance.
 Tests:
 - R065-T01: Verify the usage/help text documents `--no-ui`, `--no-mutation`, and `--no-av`.
 - R065-T02: Verify the source filters discovered lanes by the skip patterns and exports `PARALLEL_CHECKS_SKIPPED_LANES`.
+- R065-T03: Verify the skipped-lane stem loop is nounset-safe when no lanes match (empty-array-safe expansion under `set -u`).
 
 R066  Statement: Serialize macOS UI regression lanes through a single RUNNER_HOME-global lock.
 Design: In the lane worker, gate any lane whose name matches `UI_REGRESSION_PATTERN` behind a pid-aware mkdir lock at `${UI_LANE_LOCK_DIR:-${SCRIPT_DIR}/.parallel-ui-tests.lock}`; because `SCRIPT_DIR` is `RUNNER_HOME` and every repo's pointer execs this same golden, the lock is shared across repos so concurrent UI lanes (e.g. classy and mailcart under the runners-mode meta-run) wait instead of fighting the SwiftPM build and window-server focus. Reclaim only a dead owner's lock (`kill -0`) and bound the wait with `PARALLEL_UI_LOCK_WAIT_TIMEOUT_SECONDS`; perform no unconditional startup cleanup so concurrent goldens cannot stomp a held lock.
