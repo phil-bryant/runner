@@ -144,6 +144,13 @@ setup() {
   grep -q 'unset PARALLEL_CHECKS_RUNNERS_MODE' "$SCRIPT"
 }
 
+@test "forwards skip flags to delegated run-all pointers" {
+  #R011-T03: runners-mode delegated *_run_all_*tests_parallel.sh lanes receive top-level skip/serialize flags.
+  grep -q 'lane_forwarded_args' "$SCRIPT"
+  grep -q 'SKIP_UI_REGRESSION' "$SCRIPT"
+  grep -q '"\${script_path}" "\${lane_forwarded_args\[@\]}"' "$SCRIPT"
+}
+
 @test "lists the resolved lane set as a dry run" {
   #R012-T01: PARALLEL_CHECKS_LIST_ONLY=1 prints lanes and exits before launching
   grep -q 'PARALLEL_CHECKS_LIST_ONLY' "$SCRIPT"

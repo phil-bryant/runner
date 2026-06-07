@@ -550,6 +550,13 @@ run_lane_worker() {
   local script="$1"
   set +e
   unset VIRTUAL_ENV
+  local lane_forwarded_args=()
+  if [[ "$script" == *_run_all_*tests_parallel.sh ]]; then
+    [[ "${SKIP_UI_REGRESSION:-false}" == "true" ]] && lane_forwarded_args+=("--no-ui")
+    [[ "${SKIP_MUTATION_LANE:-false}" == "true" ]] && lane_forwarded_args+=("--no-mutation")
+    [[ "${SKIP_AV_LANE:-false}" == "true" ]] && lane_forwarded_args+=("--no-av")
+    [[ "${SERIALIZE_UI_MUTATION:-false}" == "true" ]] && lane_forwarded_args+=("--serialize-ui-mutation")
+  fi
   local script_path
   script_path="$(lane_script_path "$script")"
   local log
@@ -594,21 +601,21 @@ run_lane_worker() {
         TELLER_DB_HOST="${TELLER_DB_HOST:-127.0.0.1}" \
         TELLER_DB_SSLMODE="${TELLER_DB_SSLMODE:-require}" \
         TELLER_CLASSIFIER_API_URL="${TELLER_CLASSIFIER_API_URL:-${lane_api_url}}" \
-          "${script_path}" >"${log}" 2>&1
+          "${script_path}" "${lane_forwarded_args[@]}" >"${log}" 2>&1
       elif [[ "$script" == *run_dynamic_security_tests.sh ]]; then
         TELLER_DB_HOST="${TELLER_DB_HOST:-127.0.0.1}" \
         TELLER_DB_SSLMODE="${TELLER_DB_SSLMODE:-require}" \
         DAST_BASE_PORT="${DAST_BASE_PORT:-${lane_dast_base_port}}" \
         DAST_REUSE_EXISTING_API="${DAST_REUSE_EXISTING_API:-${lane_dast_reuse_api}}" \
         TELLER_DB_PROFILE="${lane_dast_db_profile}" \
-          "${script_path}" >"${log}" 2>&1
+          "${script_path}" "${lane_forwarded_args[@]}" >"${log}" 2>&1
       else
         TELLER_DB_HOST="${TELLER_DB_HOST:-127.0.0.1}" \
         TELLER_DB_SSLMODE="${TELLER_DB_SSLMODE:-require}" \
-          "${script_path}" >"${log}" 2>&1
+          "${script_path}" "${lane_forwarded_args[@]}" >"${log}" 2>&1
       fi
     else
-      "${script_path}" >"${log}" 2>&1
+      "${script_path}" "${lane_forwarded_args[@]}" >"${log}" 2>&1
     fi
   }
 
@@ -687,6 +694,7 @@ run_lane_worker() {
 }
 export -f run_lane_worker lane_script_path lane_log_label
 export CHECKS_DIR REPORT_DIR SCRIPT_DIR PARALLEL_CHECKS_RUNNERS_MODE UI_REGRESSION_PATTERN
+export SKIP_UI_REGRESSION SKIP_MUTATION_LANE SKIP_AV_LANE SERIALIZE_UI_MUTATION
 
 #R001: shard-3 function tag
 launch_check_script() {
