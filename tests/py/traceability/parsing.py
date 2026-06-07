@@ -296,9 +296,15 @@ def _ts_parse(parser, source_text: str):
 def _treesitter_block_ranges(
     language_name: str, source_text: str, node_kinds: set[str], name_prefix: str | None = None
 ) -> list[tuple[int, int]] | None:
+    spans = _treesitter_block_spans(language_name, source_text, node_kinds, name_prefix)
+    return [(start, end) for _name, start, end in spans]
+
+
+#R155: Include tree-sitter node names with parser-backed function spans.
+def _treesitter_block_spans(
+    language_name: str, source_text: str, node_kinds: set[str], name_prefix: str | None = None
+) -> list[tuple[str | None, int, int]]:
     parser = _treesitter_parser(language_name)
-    if parser is None:
-        return None
     try:
         tree = _ts_parse(parser, source_text)
     except Exception as exc:
@@ -306,20 +312,24 @@ def _treesitter_block_ranges(
             f"tree-sitter parse failed for language '{language_name}'."
         ) from exc
     source_bytes = source_text.encode("utf-8")
-    ranges: list[tuple[int, int]] = []
+    spans: list[tuple[str | None, int, int]] = []
     stack = [_ts_attr(tree, "root_node")]
     while stack:
         node = stack.pop()
         if node is None:
             continue
         if _ts_kind(node) in node_kinds:
-            if name_prefix is None or (
-                (name := _ts_node_name(node, source_bytes)) is not None and name.startswith(name_prefix)
-            ):
-                ranges.append((_point_row(_ts_attr(node, "start_point", "start_position")) + 1,
-                               _point_row(_ts_attr(node, "end_point", "end_position")) + 1))
+            name = _ts_node_name(node, source_bytes)
+            if name_prefix is None or (name is not None and name.startswith(name_prefix)):
+                spans.append(
+                    (
+                        name,
+                        _point_row(_ts_attr(node, "start_point", "start_position")) + 1,
+                        _point_row(_ts_attr(node, "end_point", "end_position")) + 1,
+                    )
+                )
         stack.extend(_ts_children(node))
-    return ranges
+    return spans
 
 
 #R120: shard-3 function tag
@@ -568,11 +578,12 @@ _FUNCTION_TS_LANGS: dict[str, tuple[str, set[str]]] = {
     ".cpp": ("cpp", {"function_definition"}),
     ".cxx": ("cpp", {"function_definition"}),
     ".hpp": ("cpp", {"function_definition"}),
-    ".m": ("cpp", {"function_definition"}),
+    ".m": ("objc", {"function_definition", "method_definition"}),
     ".mm": ("cpp", {"function_definition"}),
 }
 
 _FUNCTION_NAME_RE = re.compile(r"(?:func|function)?\s*([A-Za-z_][A-Za-z0-9_]*)\s*[\(\{]")
+_OBJC_METHOD_NAME_RE = re.compile(r"^\s*[-+]\s*\([^)]*\)\s*([A-Za-z_][A-Za-z0-9_]*)")
 
 
 #R150: shard-3 function tag
@@ -594,30 +605,55 @@ def iter_function_spans(suffix: str, text: str) -> list[tuple[str, int, int]] | 
     """Return ``(name, start_line, end_line)`` for every function in ``text``.
 
     Python uses the stdlib ``ast`` (all ``def``/``async def`` incl. nested,
-    dunder and private); bash/bats/swift/c/cpp use tree-sitter. Returns ``None``
-    for unsupported languages or when the source cannot be parsed.
+    dunder and private); bash/bats/swift/c/cpp/objc use tree-sitter. Returns
+    ``None`` for unsupported languages or when the source cannot be parsed.
     """
     suffix = suffix.lower()
     if suffix == ".py":
         return _python_function_spans(text)
+    if suffix == ".mm":
+        return _objective_cxx_function_spans(text)
     lang = _FUNCTION_TS_LANGS.get(suffix)
     if lang is None:
         return None
     language_name, node_kinds = lang
     parse_text = _bats_to_bash(text) if suffix == ".bats" else text
-    ranges = _treesitter_block_ranges(language_name, parse_text, node_kinds)
-    if ranges is None:
-        raise RuntimeError(f"tree-sitter did not return function spans for '{suffix}'.")
+    ts_spans = _treesitter_block_spans(language_name, parse_text, node_kinds)
     lines = text.splitlines()
     spans: list[tuple[str, int, int]] = []
-    for start, end in ranges:
-        name = "<anonymous>"
-        if 1 <= start <= len(lines):
-            match = _FUNCTION_NAME_RE.search(lines[start - 1])
-            if match:
-                name = match.group(1)
-        spans.append((name, start, end))
+    for ts_name, start, end in ts_spans:
+        spans.append((_resolved_function_name(ts_name, lines, start), start, end))
     return spans
+
+
+#R155: Resolve function names from parser nodes and source-line fallbacks.
+def _resolved_function_name(ts_name: str | None, lines: list[str], start: int) -> str:
+    if ts_name:
+        return ts_name
+    if not (1 <= start <= len(lines)):
+        return "<anonymous>"
+    line = lines[start - 1]
+    objc_match = _OBJC_METHOD_NAME_RE.search(line)
+    if objc_match:
+        return objc_match.group(1)
+    match = _FUNCTION_NAME_RE.search(line)
+    if match:
+        return match.group(1)
+    return "<anonymous>"
+
+
+#R170: Enumerate Objective-C++ spans by unioning C++ and Objective-C parsers.
+def _objective_cxx_function_spans(text: str) -> list[tuple[str, int, int]]:
+    lines = text.splitlines()
+    merged_by_start: dict[int, tuple[str, int, int]] = {}
+    cpp_spans = _treesitter_block_spans("cpp", text, {"function_definition"})
+    objc_spans = _treesitter_block_spans("objc", text, {"method_definition"})
+    for ts_name, start, end in cpp_spans + objc_spans:
+        resolved = _resolved_function_name(ts_name, lines, start)
+        prior = merged_by_start.get(start)
+        if prior is None or prior[0] == "<anonymous>" and resolved != "<anonymous>":
+            merged_by_start[start] = (resolved, start, end)
+    return [merged_by_start[start] for start in sorted(merged_by_start)]
 
 
 #R160: shard-3 function tag

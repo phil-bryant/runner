@@ -40,11 +40,13 @@ Tests:
 - R025-T04: Verify an unparseable Python file falls back to the indentation scan without raising.
 - R025-T05: Verify a stray brace inside a bats string does not close the block early.
 - R025-T06: Verify swift closure/string braces do not end a test function early.
+- R025-T07: Property test verifies extracted source IDs stay deduplicated and sorted across mixed scoped/bare tag inputs.
 
 R030  Statement: Bare source #R tags without scoped text are detectable.
 Design: `find_unscoped_source_tags` returns line diagnostics for `#Rxxx` source tags missing the `: <text>` scope, ignoring numbered test tags.
 Tests:
 - R030-T01: Verify a bare `#Rxxx` is reported while `#Rxxx: text` is not.
+- R030-T02: Property test verifies scoped extraction ignores bare `#Rxxx` tags across arbitrary inputs.
 
 R035  Statement: Bare numbered test tags without scoped text are detectable.
 Design: `find_unscoped_numbered_test_tags` returns line diagnostics for `#Rxxx-Tnn` tags missing the `: <text>` scope.
@@ -58,6 +60,7 @@ Tests:
 - R040-T02: Verify private, nested, and dunder functions are enumerated (not exempt).
 - R040-T03: Verify a syntax-error Python file and an unsupported suffix yield no findings.
 - R040-T04: Verify tree-sitter languages (bash/swift) enumerate functions and flag untagged ones.
+- R040-T05: Property test verifies each bare source tag yields a strictness issue.
 
 R045  Statement: Tree-sitter-backed traceability parsing is strict and non-disablable.
 Design: `_treesitter_parser` and parser-backed helpers hard-fail when tree-sitter is unavailable or cannot parse a required language; there is intentionally no `STRICT_TRACEABILITY_TREESITTER` runtime knob and no downgrade fallback for tree-sitter-backed checks.
@@ -120,6 +123,7 @@ R145  Statement: Numbered test tags are enumerable by line and line membership c
 Design: `_numbered_tags_by_line` collects numbered tags with line numbers and `_line_in_ranges` checks membership.
 Tests:
 - R145-T01: Verify numbered tags include source line numbers and range membership checks behave correctly.
+- R145-T02: Property test verifies numbered tag extraction preserves line-number ordering.
 
 R150  Statement: Python function spans enumerate all defs and return None on parse failure.
 Design: `_python_function_spans` enumerates all function defs via ast and returns `None` on syntax errors.
@@ -141,8 +145,16 @@ Design: `format_bulleted` renders each item with the provided bullet prefix.
 Tests:
 - R165-T01: Verify bulleted formatting for default and custom prefixes.
 
+R170  Statement: Objective-C and Objective-C++ function spans include Objective-C method definitions.
+Design: `iter_function_spans` parses `.m` files with the `objc` grammar (`method_definition` + `function_definition`) and parses `.mm` as the union of C++ `function_definition` and Objective-C `method_definition` nodes, then resolves selector-aware names.
+Tests:
+- R170-T01: Verify untagged Objective-C methods in `.m` files are enumerated.
+- R170-T02: Verify `.mm` span enumeration includes both C++ free functions and Objective-C methods.
+- R170-T03: Verify Objective-C selector names are preserved in untagged-function diagnostics.
+
 ## Changelog
 
+- 2026-06-07: Added R170 to require Objective-C (`.m`) and Objective-C++ (`.mm`) method coverage in function-span enumeration and diagnostics.
 - 2026-06-06: Added R100-R165 parsing helper requirements for shard-3 function-level traceability coverage.
 - 2026-06-06: Added R050 (`find_unanchored_numbered_test_tags`) backing the numbered-test-tag anchoring gate; tags must sit inside parser-recognized test definitions and unparseable test-language files fail closed.
 - 2026-06-06: Added R045 and removed the `STRICT_TRACEABILITY_TREESITTER` opt-out; tree-sitter-backed parsing is now mandatory/non-disablable.

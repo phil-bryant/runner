@@ -200,6 +200,44 @@ def test_find_untagged_functions_treesitter_languages(tmp_path):
     assert "a" in sw_names
 
 
+def test_find_untagged_functions_objective_c_methods(tmp_path):
+    #R170-T01: untagged Objective-C methods in `.m` files are enumerated.
+    pytest.importorskip("tree_sitter_language_pack")
+    fixture = tmp_path / "x.m"
+    fixture.write_text("@implementation X\n- (void)methodA {\n  return;\n}\n@end\n")
+    names = [name for name, _line in parsing.find_untagged_functions(fixture)]
+    assert "methodA" in names
+
+
+def test_iter_function_spans_objective_cxx_unions_cpp_and_objc(tmp_path):
+    #R170-T02: `.mm` span enumeration includes C++ functions and Objective-C methods.
+    pytest.importorskip("tree_sitter_language_pack")
+    fixture = tmp_path / "x.mm"
+    fixture.write_text(
+        "int cppFunction() {\n"
+        "  return 1;\n"
+        "}\n"
+        "@implementation X\n"
+        "- (BOOL)objcMethod:(NSInteger)value {\n"
+        "  return value > 0;\n"
+        "}\n"
+        "@end\n"
+    )
+    names = [name for name, _start, _end in parsing.iter_function_spans(".mm", fixture.read_text()) or []]
+    assert "cppFunction" in names
+    assert any("objcMethod" in name for name in names)
+
+
+def test_find_untagged_functions_preserves_objc_selector_name(tmp_path):
+    #R170-T03: Objective-C selector names are preserved in untagged diagnostics.
+    pytest.importorskip("tree_sitter_language_pack")
+    fixture = tmp_path / "x.m"
+    fixture.write_text("@implementation X\n- (BOOL)moveToFolder:(NSString *)folder {\n  return YES;\n}\n@end\n")
+    misses = parsing.find_untagged_functions(fixture)
+    assert misses and misses[0][0] != "<anonymous>"
+    assert any("moveToFolder" in name for name, _line in misses)
+
+
 def test_find_unanchored_numbered_test_tags_python(tmp_path):
     #R050-T01: a tag inside a real def test_* block is anchored; a module-level tag is reported.
     fixture = tmp_path / "x.py"
