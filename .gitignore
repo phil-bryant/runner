@@ -3,3 +3,4 @@ runner-venv/
 src/scripts/__pycache__/
 tests/**/__pycache__/
 *.pyc
+parallel-db-tests.lock/pid
