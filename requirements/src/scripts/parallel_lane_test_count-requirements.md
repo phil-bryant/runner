@@ -8,6 +8,8 @@ R001  Statement: Resolve the traceability lane count from the engine summary lin
 Design: Parse the `Summary: total=N pass=.. fail=..` line of the traceability lane log and return `N`.
 Tests:
 - R001-T01: Verify the traceability lane returns the `total` from a summary log line.
+- R001-T02: Verify traceability summary parser ignores unrelated lines and selects the latest valid summary total.
+- R001-T03: Verify traceability parser returns no count when summary formatting is absent or invalid.
 
 R005  Statement: Resolve the shell-unit lane count from bats TAP output.
 Design: Sum all bats `1..N` plan lines, falling back to counting `ok` result lines when no plan is present.
@@ -18,6 +20,14 @@ R010  Statement: Resolve the python-unit lane count from the pytest summary.
 Design: Return `0` for "no tests ran", otherwise sum the outcome counts from the pytest summary line, with a `collected N items` fallback.
 Tests:
 - R010-T01: Verify the python-unit lane parses the pytest passed-summary count.
+- R010-T02: Verify the python-unit lane falls back to `collected N items` when no summary outcome tuple is present.
+
+R022  Statement: Resolve SQL-unit lane counts from pg_prove/TAP output.
+Design: Prefer pg_prove `Tests=N` summary totals, then TAP plan counts, and finally counted `ok` records when summary/plan lines are absent.
+Tests:
+- R022-T01: Verify SQL-unit lane total selection prefers `Tests=N` summaries over TAP fallbacks.
+- R022-T02: Verify SQL-unit lane falls back to summed TAP plan totals when pg_prove summary lines are absent.
+- R022-T03: Verify SQL-unit lane falls back to counted `ok` rows when both summary and TAP plan lines are absent.
 
 R012  Statement: Resolve the swift-unit lane count from XCTest summary output.
 Design: Parse XCTest summary lines (`Executed N tests` / `Test run with N tests`) and use the most recent matched total when multiple summaries are present.
@@ -29,6 +39,7 @@ R015  Statement: Resolve artifact-summary lane counts from a summary JSON field.
 Design: Read an integer count field from a lane summary JSON (fuzz `property_test_count`, mutation `total`) and return it when present.
 Tests:
 - R015-T01: Verify the fuzz lane reads `property_test_count` from its summary artifact.
+- R015-T02: Verify the mutation lane reads `total` from its summary artifact.
 
 R018  Statement: Resolve macOS UI regression lane count from scenario output artifacts.
 Design: Prefer the lane timing summary `... over N scenarios`, then fallback to parsing the XCUITest selector line or `artifacts/macos-ui-regression/xcuitest-steps.env`.
@@ -47,6 +58,7 @@ R025  Statement: Resolve security lane counts from log-declared report directori
 Design: Extract the report directory from the lane log `Reports:` line (falling back to a default) and count discovered tool artifact files within it.
 Tests:
 - R025-T01: Verify the static security lane counts discovered tool artifacts from the report path declared in the log.
+- R025-T02: Verify security-lane count falls back to default artifacts path when the log omits a `Reports:` declaration.
 
 R030  Statement: Emit a safe single-test fallback for unknown or uncountable lanes.
 Design: Print `1` when the lane is unknown or yields a `None`/negative count, otherwise print the resolved count.
@@ -54,3 +66,4 @@ Tests:
 - R030-T01: Verify an unknown lane falls back to printing `1`.
 - R030-T02: Verify an uncountable swift lane log falls back to printing `1`.
 - R030-T03: Verify an unparseable macOS UI regression lane log falls back to printing `1`.
+- R030-T04: Verify non-positive resolved lane counts are clamped to fallback `1`.

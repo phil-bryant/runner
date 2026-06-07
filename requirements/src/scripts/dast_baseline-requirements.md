@@ -28,3 +28,5 @@ R035  Statement: Capture baseline artifacts with skip degradation and summary em
 Design: Orchestrate baseline capture end-to-end, degrading to skipped on unavailable dependencies and emitting status summary output.
 Tests:
 - R035-T01: Verify `main` writes captured/skip artifacts and emits expected summary status fields.
+- R035-T02: Verify invalid CLI invocation returns usage exit code.
+- R035-T03: Verify captured baseline path records maxima and row snapshots for all mutable tables.

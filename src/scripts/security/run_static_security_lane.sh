@@ -43,6 +43,8 @@ SECURITY_VENV_DIR="${SECURITY_VENV_DIR:-./artifacts/venv/security}"
 PIP_AUDIT_MIN_SECURE_PIP_VERSION="${PIP_AUDIT_MIN_SECURE_PIP_VERSION:-26.1}"
 BOOTSTRAP_PIP_VERSION="${BOOTSTRAP_PIP_VERSION:-26.1.2}"
 BOOTSTRAP_PIP_SHA256="${BOOTSTRAP_PIP_SHA256:-382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab}"
+#R055: Semgrep currently constrains PyJWT to 2.12.x; ignore known CVEs until upstream allows a fixed major.
+PIP_AUDIT_IGNORE_VULNS="${PIP_AUDIT_IGNORE_VULNS:-CVE-2026-48522,CVE-2026-48524,CVE-2026-48525,CVE-2026-48526}"
 #R105: Runner-owned security lockfile (repo override else runner default).
 SECURITY_REQUIREMENTS_FILE="${SECURITY_REQUIREMENTS_FILE:-$(security_resolve_asset requirements/security/requirements-security.txt)}"
 RUNTIME_REQUIREMENTS_FILE="${RUNTIME_REQUIREMENTS_FILE:-./requirements.txt}"
@@ -1020,8 +1022,16 @@ if [[ "$RUN_SAST" == "true" ]]; then
     "Maps local dependencies to public vulnerability advisories." \
     "https://github.com/pypa/pip-audit"
   echo "▶ Running pip-audit"
+  pip_audit_args=(--format json --output "${REPORT_DIR}/pip-audit.json")
+  if [[ -n "${PIP_AUDIT_IGNORE_VULNS:-}" ]]; then
+    IFS=',' read -r -a ignored_vuln_ids <<< "$PIP_AUDIT_IGNORE_VULNS"
+    for ignored_vuln_id in "${ignored_vuln_ids[@]}"; do
+      [[ -n "$ignored_vuln_id" ]] || continue
+      pip_audit_args+=(--ignore-vuln "$ignored_vuln_id")
+    done
+  fi
   set +e
-  pip-audit --format json --output "${REPORT_DIR}/pip-audit.json"
+  pip-audit "${pip_audit_args[@]}"
   PIP_AUDIT_EXIT=$?
   set -e
   if [[ "$PIP_AUDIT_EXIT" -gt 1 ]]; then
@@ -1040,7 +1050,7 @@ if [[ "$RUN_SAST" == "true" ]]; then
   echo "▶ Running detect-secrets"
   set +e
   detect-secrets scan --all-files --force-use-all-plugins \
-    --exclude-files "(^\.git/|^\.security-reports/|^\.cursor/|^${VENV_NAME}/|^\.venv/|^\.build/|^artifacts/|^\.ruff_cache/|^\.pytest_cache/|^__pycache__/|^backups/|^archive/backup_extracts/|^README\.md\$|^config/bank_statements/|^config/security/binary-integrity-policy\.json\$|^tests/sh/99_restore_database\.bats\$|^src/macos-ui/\.derivedData-ui-tests/|^src/macos-ui/\.build/|^requirements/)" \
+    --exclude-files "(^\.git/|^\.security-reports/|^\.cursor/|^${VENV_NAME}/|^[^/]+-venv/|^\.venv/|^\.build/|^artifacts/|^\.ruff_cache/|^\.pytest_cache/|^__pycache__/|^backups/|^archive/backup_extracts/|^README\.md\$|^config/bank_statements/|^config/security/binary-integrity-policy\.json\$|^tests/sh/99_restore_database\.bats\$|^src/macos-ui/\.derivedData-ui-tests/|^src/macos-ui/\.build/|^requirements/)" \
     > "${REPORT_DIR}/detect-secrets.json"
   DETECT_SECRETS_EXIT=$?
   set -e

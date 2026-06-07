@@ -115,10 +115,12 @@ class DastCleanupTests(unittest.TestCase):
     def test_restore_delete_helpers_return_row_counts(self):
         #R030-T02: row-level restore/delete helpers return execute rowcount values.
         class _ExecResult:
+            #R030: nested helper function tag
             def __init__(self, rowcount=0):
                 self.rowcount = rowcount
 
         class _Conn:
+            #R030: nested helper function tag
             def execute(self, *_args, **_kwargs):
                 return _ExecResult(rowcount=2)
 
@@ -139,10 +141,12 @@ class DastCleanupTests(unittest.TestCase):
     def test_reconcile_and_restore_category_helpers(self):
         #R030-T03: classification/category helpers cover delete-all and restore filtering branches.
         class _ExecResult:
+            #R030: nested helper function tag
             def __init__(self, rowcount=0):
                 self.rowcount = rowcount
 
         class _Conn:
+            #R030: nested helper function tag
             def execute(self, *_args, **_kwargs):
                 return _ExecResult(rowcount=1)
 
@@ -210,6 +214,7 @@ class DastCleanupTests(unittest.TestCase):
             summary_path = Path(tmp) / "summary.json"
             original_import = __import__
 
+            #R045: nested helper function tag
             def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
                 if name == "teller.teller_db":
                     raise ImportError("db unavailable")

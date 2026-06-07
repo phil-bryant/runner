@@ -64,7 +64,7 @@ for snippet in required_snippets:
         raise SystemExit(f"missing secure enforcement snippet: {snippet}")
 
 invoke_index = text.find("configure_pip_audit_python\nenforce_pip_audit_secure_baseline")
-pip_audit_index = text.find('pip-audit --format json --output "${REPORT_DIR}/pip-audit.json"')
+pip_audit_index = text.find('pip-audit "${pip_audit_args[@]}"')
 if invoke_index == -1:
     raise SystemExit("missing secure-baseline invocation after configure_pip_audit_python")
 if pip_audit_index == -1:

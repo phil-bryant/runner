@@ -490,6 +490,7 @@ class PostgresFreshnessHelperTests(unittest.TestCase):
                 pass
 
             @staticmethod
+            #R045: nested helper function tag
             def get(*_args, **_kwargs):
                 raise _ReqErr.RequestException("network down")
 
@@ -503,6 +504,7 @@ class PostgresFreshnessHelperTests(unittest.TestCase):
             encoding = "utf-8"
 
             @staticmethod
+            #R045: nested helper function tag
             def raise_for_status():
                 return None
 
@@ -510,6 +512,7 @@ class PostgresFreshnessHelperTests(unittest.TestCase):
             RequestException = RuntimeError
 
             @staticmethod
+            #R045: nested helper function tag
             def get(*_args, **_kwargs):
                 return _RespBadHost()
 

@@ -244,21 +244,25 @@ class MutmutDarwinTests(unittest.TestCase):
     def test_generate_mutants_serial_warns_and_raises_on_error(self):
         #R040-T02: serial mutant generation emits warnings and raises result.error.
         class Stats:
+            #R040: nested helper function tag
             def __init__(self):
                 self.unmodified = 0
                 self.ignored = 0
                 self.mutated = 0
 
         class Result:
+            #R040: nested helper function tag
             def __init__(self, *, warnings=None, error=None, unmodified=False, ignored=False):
                 self.warnings = warnings or []
                 self.error = error
                 self.unmodified = unmodified
                 self.ignored = ignored
 
+        #R040: nested helper function tag
         def walk():
             return [Path("a.py"), Path("b.py")]
 
+        #R040: nested helper function tag
         def create(path):
             if path.name == "a.py":
                 return Result(warnings=["warn-a"], unmodified=True)
@@ -337,11 +341,13 @@ class MutmutDarwinTests(unittest.TestCase):
     def test_execute_updates_meta_and_returns_success(self):
         #R050-T05: execute path updates mutant metadata and succeeds for serial/parallel workers.
         class _Meta:
+            #R050: nested helper function tag
             def __init__(self):
                 self.exit_code_by_key = {}
                 self.durations_by_key = {}
                 self.saved = 0
 
+            #R050: nested helper function tag
             def save(self):
                 self.saved += 1
 

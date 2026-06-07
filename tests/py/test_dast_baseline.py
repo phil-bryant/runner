@@ -66,23 +66,29 @@ class DastBaselineTests(unittest.TestCase):
     def test_main_captured_payload_path(self):
         #R035-T03: happy path captures baseline maxima and row snapshots.
         class _Result:
+            #R035: nested helper function tag
             def __init__(self, *, scalar=None, rows=None):
                 self._scalar = scalar
                 self._rows = rows or []
 
+            #R035: nested helper function tag
             def scalar_one(self):
                 return self._scalar
 
+            #R035: nested helper function tag
             def fetchall(self):
                 return self._rows
 
         class _Conn:
+            #R035: nested helper function tag
             def __enter__(self):
                 return self
 
+            #R035: nested helper function tag
             def __exit__(self, exc_type, exc, tb):
                 return False
 
+            #R035: nested helper function tag
             def exec_driver_sql(self, sql):
                 if "MAX(nys_snw_category_id)" in sql:
                     return _Result(scalar=20)
@@ -107,6 +113,7 @@ class DastBaselineTests(unittest.TestCase):
                 return _Result()
 
         class _Engine:
+            #R035: nested helper function tag
             def connect(self):
                 return _Conn()
 

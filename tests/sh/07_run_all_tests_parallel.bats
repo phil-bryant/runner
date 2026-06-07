@@ -120,6 +120,11 @@ setup() {
   grep -q 'PARALLEL_CHECKS_SKIPPED_LANES' "$SCRIPT"
 }
 
+@test "skip-stem loop is nounset-safe when no lanes match" {
+  #R065-T03: source uses `${arr[@]+"${arr[@]}"}` for empty-array safety under `set -u`.
+  grep -Fq 'for skipped_lane_stem in ${skipped_lane_stems[@]+"${skipped_lane_stems[@]}"}; do' "$SCRIPT"
+}
+
 @test "quality telemetry is opt-out" {
   #R070-T01: telemetry block is guarded by QUALITY_SCORING_ENABLED
   grep -q 'QUALITY_SCORING_ENABLED' "$SCRIPT"

@@ -141,6 +141,19 @@ activate
 per-script logs under the repo's artifacts directory, and emits completion-order PASS/FAIL lines plus quality
 telemetry. `matchy/04_run_all_tests_parallel.sh` is the matchy-facing pointer into the same orchestrator.
 
+## Autodiscovery
+
+The parallel orchestrator is discovery-first: it scans the target repo for executable `tests/tNN_*.sh` lanes,
+then applies profile/flag filters (for example `RUN_LANE_ALLOWLIST` and `--no-*` skips) before launching the
+selected lanes concurrently. You do not maintain a hardcoded lane list in runner.
+
+## Autodiscovering All Autodiscovering Test Runners
+
+`../run_all_test_runners.sh` is the workspace-level thin pointer that selects the `eggnest-runners` profile and
+delegates into `07_run_all_tests_parallel.sh` in runners-discovery mode. In practical terms, it discovers each
+repo's executable `NN_run_all_*tests_parallel.sh` entrypoint and runs those repo-level runners in parallel so
+you can kick off the full workspace test-runner surface with one command.
+
 ## Test-lane catalog (`tests/tNN_*.sh`)
 
 The runner holds only the lanes that are genuinely shared across repos, renumbered contiguous `t00`-`t10`:

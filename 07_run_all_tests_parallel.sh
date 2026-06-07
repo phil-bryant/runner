@@ -185,7 +185,7 @@ if [[ "$SKIP_UI_REGRESSION" == "true" || "$SKIP_MUTATION_LANE" == "true" || "$SK
     fi
     filtered_checks+=("$candidate_script")
   done
-  CHECKS=("${filtered_checks[@]}")
+  CHECKS=("${filtered_checks[@]+"${filtered_checks[@]}"}")
   if [[ "$SKIP_UI_REGRESSION" == "true" && "$ui_skip_count" -eq 0 ]]; then
     echo "ℹ️  --no-ui: no *${UI_REGRESSION_PATTERN}* lane in discovery set; nothing to skip"
   fi
@@ -195,7 +195,7 @@ if [[ "$SKIP_UI_REGRESSION" == "true" || "$SKIP_MUTATION_LANE" == "true" || "$SK
   if [[ "$SKIP_AV_LANE" == "true" && "$av_skip_count" -eq 0 ]]; then
     echo "ℹ️  --no-av: no *${AV_LANE_PATTERN}* lane in discovery set; nothing to skip"
   fi
-  for skipped_lane_stem in "${skipped_lane_stems[@]}"; do
+  for skipped_lane_stem in ${skipped_lane_stems[@]+"${skipped_lane_stems[@]}"}; do
     if [[ -n "$SKIPPED_LANES" ]]; then
       SKIPPED_LANES="${SKIPPED_LANES},${skipped_lane_stem}"
     else
@@ -550,11 +550,18 @@ run_lane_worker() {
   local script="$1"
   set +e
   unset VIRTUAL_ENV
-  local script_path="$(lane_script_path "$script")"
-  local log="${REPORT_DIR}/$(lane_log_label "$script").log"
+  local script_path
+  script_path="$(lane_script_path "$script")"
+  local log
+  log="${REPORT_DIR}/$(lane_log_label "$script").log"
   # Keep lanes parallel while isolating shared resources.
   local lane_api_url="${PARALLEL_CLASSIFIER_API_URL:-https://127.0.0.1:${PARALLEL_CLASSIFIER_API_PORT:-8787}}"
-  local lane_dast_base_port="${PARALLEL_DAST_BASE_PORT:-8788}"
+  local lane_dast_base_port_default="${PARALLEL_DAST_BASE_PORT:-8788}"
+  local lane_dast_port_offset=0
+  if [[ "${PARALLEL_CHECKS_RUNNERS_MODE:-false}" == "true" ]]; then
+    lane_dast_port_offset="$(( $(printf '%s' "$script" | cksum | awk '{print $1}') % 200 ))"
+  fi
+  local lane_dast_base_port="$(( lane_dast_base_port_default + lane_dast_port_offset ))"
   local lane_dast_reuse_api="${PARALLEL_DAST_REUSE_EXISTING_API:-false}"
   local lane_dast_db_profile="${PARALLEL_DAST_DB_PROFILE:-${TELLER_DB_PROFILE:-}}"
   local crash_check_delay="${PARALLEL_CRASH_CHECK_DELAY_SECONDS:-0}"
@@ -564,6 +571,7 @@ run_lane_worker() {
   # t12). SCRIPT_DIR is RUNNER_HOME and every repo's pointer execs this same golden, so this dir is shared.
   local ui_lock_dir="${UI_LANE_LOCK_DIR:-${SCRIPT_DIR}/.parallel-ui-tests.lock}"
   local ui_pattern="${UI_REGRESSION_PATTERN:-macos_ui_regression}"
+  local ui_crash_pattern="${UI_CRASH_PATTERN:-verify_macos_crash_test}"
   local exit_code=0
   #R011: script_path/log are already resolved above; drop runners-mode and meta-only env so a child lane
   # that is itself a run-all pointer (every runners-mode lane) execs its golden in normal tNN discovery
@@ -573,7 +581,9 @@ run_lane_worker() {
   # leaks in and suppresses delegate_golden's auto-load for every child.
   unset PARALLEL_CHECKS_RUNNERS_MODE RUNNERS_DISCOVERY_GLOB RUNNERS_DISCOVERY_MAXDEPTH \
     PARALLEL_CHECKS_REPORT_DIR QUALITY_SCORING_ENABLED \
-    POINTER_SHIM_PROFILE_LOADED RUNBOOK_PROFILE
+    POINTER_SHIM_PROFILE_LOADED RUNBOOK_PROFILE RUNBOOK_REPO_NAME VENV_NAME \
+    TRACEABILITY_REQUIREMENTS_ROOTS TRACEABILITY_TEST_ROOTS SHELL_BATS_ROOTS \
+    DEPENDENCY_VENV_CRUFT_ALLOW DAST_BASE_PORT
   if [[ "$script" == *verify_macos_crash_test.sh && "$crash_check_delay" =~ ^[0-9]+$ && "$crash_check_delay" -gt 0 ]]; then
     sleep "$crash_check_delay"
   fi
@@ -603,11 +613,23 @@ run_lane_worker() {
   }
 
   if [[ "$script" == *deploy_database_verification_test.sh || "$script" == *run_sql_unit_tests.sh || "$script" == *classification_persistence_verification_test.sh || "$script" == *run_dynamic_security_tests.sh ]]; then
-    local lock_wait_timeout="${PARALLEL_DB_LOCK_WAIT_TIMEOUT_SECONDS:-180}"
+    local lock_wait_timeout="${PARALLEL_DB_LOCK_WAIT_TIMEOUT_SECONDS:-600}"
     local lock_wait_start
     lock_wait_start="$(date +%s)"
     local now_epoch=0
+    local db_owner=""
     while ! mkdir "$db_lock_dir" 2>/dev/null; do
+      db_owner=""
+      if [[ -f "${db_lock_dir}/pid" ]]; then
+        db_owner="$(<"${db_lock_dir}/pid")"
+        if [[ -n "$db_owner" ]] && ! kill -0 "$db_owner" 2>/dev/null; then
+          rm -rf "$db_lock_dir" 2>/dev/null || true
+          continue
+        fi
+      else
+        rm -rf "$db_lock_dir" 2>/dev/null || true
+        continue
+      fi
       now_epoch="$(date +%s)"
       if (( now_epoch - lock_wait_start >= lock_wait_timeout )); then
         printf '%s\n' "❌ FAIL: timed out waiting for DB lane lock (${lock_wait_timeout}s)." >"$log"
@@ -617,11 +639,12 @@ run_lane_worker() {
       sleep 1
     done
     if [[ "$exit_code" -eq 0 ]]; then
+      echo "${BASHPID:-$$}" > "${db_lock_dir}/pid" 2>/dev/null || true
       run_lane
       exit_code=$?
     fi
-    rmdir "$db_lock_dir" 2>/dev/null || true
-  elif [[ "$script" == *"$ui_pattern"* ]]; then
+    rm -rf "$db_lock_dir" 2>/dev/null || true
+  elif [[ "$script" == *"$ui_pattern"* || "$script" == *"$ui_crash_pattern"* ]]; then
     #R066: Serialize macOS UI regression lanes through a pid-aware, RUNNER_HOME-global lock. No
     # unconditional startup cleanup (concurrent goldens would stomp a held lock); reclaim only on a
     # dead owner so simultaneous classy/mailcart UI lanes wait instead of fighting the window server.
@@ -668,7 +691,8 @@ export CHECKS_DIR REPORT_DIR SCRIPT_DIR PARALLEL_CHECKS_RUNNERS_MODE UI_REGRESSI
 #R001: shard-3 function tag
 launch_check_script() {
   local script="$1"
-  local log="${REPORT_DIR}/$(lane_log_label "$script").log"
+  local log
+  log="${REPORT_DIR}/$(lane_log_label "$script").log"
   safe_move_to_trash "${log}"
   safe_move_to_trash "${log}.exit"
   safe_move_to_trash "${log}.start"
@@ -714,7 +738,8 @@ record_check_result() {
   done
   reported_scripts+=("$completed_script")
   reported=$((reported + 1))
-  local log="${REPORT_DIR}/$(lane_log_label "$completed_script").log"
+  local log
+  log="${REPORT_DIR}/$(lane_log_label "$completed_script").log"
   local start_file="${log}.start"
   local start_epoch=0
   if [[ -f "$start_file" ]]; then
@@ -792,7 +817,7 @@ exec 3>&-
 
 set +e
 for pid in "${child_pids[@]}"; do
-  wait "$pid"
+  wait "$pid" 2>/dev/null || true
 done
 set -e
 
