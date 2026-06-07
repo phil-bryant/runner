@@ -6,7 +6,7 @@ Applies to `07_run_all_tests_parallel.sh`. This is the shared golden parallel
 test orchestrator owned by the runner engine: it resolves the target repo,
 discovers the numbered `tests/tNN_*` check lanes, launches them concurrently
 each in its own session, streams per-lane pass/fail results in completion order,
-gates the overall run, and emits optional quality telemetry. The runner self-run
+gates the overall run. The runner self-run
 (11_run_all_self_tests_parallel) and the consuming repos delegate to this
 golden, but its behavioral source/test traceability is enforced here against the
 first-party in-repo implementation.
@@ -104,12 +104,8 @@ Design: In the lane worker, gate any lane whose name matches `UI_REGRESSION_PATT
 Tests:
 - R066-T01: Verify the worker gates `UI_REGRESSION_PATTERN` lanes behind the `.parallel-ui-tests.lock` with a pid-aware, bounded wait.
 
-R070  Statement: Quality scoring and telemetry are opt-out via an environment flag.
-Design: Run the embedded quality-telemetry scorer (writing `quality-history.ndjson`/`quality-trend.json`) only when `QUALITY_SCORING_ENABLED` is not `false` (default `true`), so the orchestrator can run lane gating without telemetry when disabled.
-Tests:
-- R070-T01: Verify the telemetry block is guarded by `QUALITY_SCORING_ENABLED` (default `true`).
-
 ## Changelog
 
-- 2026-06-06: Converted from `Requirements-only mode: true` to a full traceability doc with a 15-entry requirement set reconciled to the current orchestrator source (filesystem lane discovery, completion-FIFO ordering, single-run lock, scoped cleanup, lane-skip flags, and opt-out quality telemetry), plus a companion bats lane.
+- 2026-06-07: Removed telemetry-specific requirements (R070, R075) after deleting quality telemetry/trend/target/prune functionality from the orchestrator.
+- 2026-06-06: Converted from `Requirements-only mode: true` to a full traceability doc with a 15-entry requirement set reconciled to the current orchestrator source (filesystem lane discovery, completion-FIFO ordering, single-run lock, scoped cleanup, and lane-skip flags), plus a companion bats lane.
 - 2026-06-06: Refined R030 to require the final PASS gate format `✅ PASS: all parallel checks succeeded [<aggregate_tests> tests] (<passed>/<total>)` and added numbered test mapping `R030-T02` for the aggregate summary string.

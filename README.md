@@ -138,8 +138,8 @@ activate
 ## Parallel orchestration
 
 `07_run_all_tests_parallel.sh` discovers `tests/t*.sh` under the target repo, runs them in parallel, writes
-per-script logs under the repo's artifacts directory, and emits completion-order PASS/FAIL lines plus quality
-telemetry. `matchy/04_run_all_tests_parallel.sh` is the matchy-facing pointer into the same orchestrator.
+per-script logs under the repo's artifacts directory, and emits completion-order PASS/FAIL lines.
+`matchy/04_run_all_tests_parallel.sh` is the matchy-facing pointer into the same orchestrator.
 
 ## Autodiscovery
 

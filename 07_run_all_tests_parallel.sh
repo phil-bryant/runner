@@ -244,8 +244,6 @@ fi
 #R035: Persist per-check stdout/stderr log artifacts.
 REPORT_DIR="${PARALLEL_CHECKS_REPORT_DIR:-./artifacts/parallel}"
 mkdir -p "$REPORT_DIR"
-TELEMETRY_DIR="${QUALITY_TELEMETRY_DIR:-./artifacts/telemetry}"
-mkdir -p "$TELEMETRY_DIR"
 PROGRESS_INTERVAL_SECONDS="${PARALLEL_CHECKS_PROGRESS_INTERVAL_SECONDS:-1}"
 if [[ ! "$PROGRESS_INTERVAL_SECONDS" =~ ^[0-9]+$ || "$PROGRESS_INTERVAL_SECONDS" -le 0 ]]; then
   PROGRESS_INTERVAL_SECONDS=1
@@ -582,12 +580,12 @@ run_lane_worker() {
   local exit_code=0
   #R011: script_path/log are already resolved above; drop runners-mode and meta-only env so a child lane
   # that is itself a run-all pointer (every runners-mode lane) execs its golden in normal tNN discovery
-  # mode, in its own repo's report dir, with its own quality scoring — never recursively or sharing ours.
+  # mode, in its own repo's report dir — never recursively or sharing ours.
   # Also drop the meta-run's loaded-profile markers so each child pointer re-resolves and re-sources ITS
   # OWN runbook profile (e.g. eggnest.env's TRACEABILITY_* roots); otherwise POINTER_SHIM_PROFILE_LOADED=1
   # leaks in and suppresses delegate_golden's auto-load for every child.
   unset PARALLEL_CHECKS_RUNNERS_MODE RUNNERS_DISCOVERY_GLOB RUNNERS_DISCOVERY_MAXDEPTH \
-    PARALLEL_CHECKS_REPORT_DIR QUALITY_SCORING_ENABLED \
+    PARALLEL_CHECKS_REPORT_DIR \
     POINTER_SHIM_PROFILE_LOADED RUNBOOK_PROFILE RUNBOOK_REPO_NAME VENV_NAME \
     TRACEABILITY_REQUIREMENTS_ROOTS TRACEABILITY_TEST_ROOTS SHELL_BATS_ROOTS \
     DEPENDENCY_VENV_CRUFT_ALLOW DAST_BASE_PORT
@@ -832,221 +830,6 @@ set -e
 #R060: Report wall time and longest lane before overall gate.
 wall_elapsed=$(( $(date +%s) - run_start_epoch ))
 echo "Timing: wall ${wall_elapsed}s; long pole ${long_pole_script} (${long_pole_seconds}s)"
-
-#R070: Quality scoring/telemetry is opt-out via QUALITY_SCORING_ENABLED (default true).
-if [[ "${QUALITY_SCORING_ENABLED:-true}" == "true" ]]; then
-python3 - "$REPORT_DIR" "$TELEMETRY_DIR" "$run_start_epoch" "$wall_elapsed" "$total" "$pass_count" "$fail_count" <<'PY'
-import json
-import math
-import os
-import statistics
-import sys
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-
-report_dir = Path(sys.argv[1])
-telemetry_dir = Path(sys.argv[2])
-run_started_epoch = int(sys.argv[3])
-wall_elapsed = int(sys.argv[4])
-total = int(sys.argv[5])
-passed = int(sys.argv[6])
-failed = int(sys.argv[7])
-run_started_at = datetime.fromtimestamp(run_started_epoch, tz=timezone.utc)
-
-history_path = telemetry_dir / "quality-history.ndjson"
-trend_path = telemetry_dir / "quality-trend.json"
-lane_summary_path = telemetry_dir / f"lane-summary-{run_started_at.strftime('%Y%m%dT%H%M%SZ')}.json"
-
-lane_entries = []
-for exit_file in sorted(report_dir.glob("*.log.exit")):
-    log_file = exit_file.with_suffix("")
-    lane_name = exit_file.name.replace(".log.exit", "")
-    start_file = Path(str(log_file) + ".start")
-    start_epoch = run_started_epoch
-    if start_file.exists():
-        try:
-            start_epoch = int(start_file.read_text(encoding="utf-8").strip())
-        except ValueError:
-            start_epoch = run_started_epoch
-    end_epoch = int(exit_file.stat().st_mtime)
-    elapsed = max(0, end_epoch - start_epoch)
-    try:
-        exit_code = int(exit_file.read_text(encoding="utf-8").strip())
-    except ValueError:
-        exit_code = 99
-    lane_entries.append(
-        {
-            "lane": lane_name,
-            "status": "pass" if exit_code == 0 else "fail",
-            "exit_code": exit_code,
-            "elapsed_seconds": elapsed,
-        }
-    )
-
-lane_status = {entry["lane"]: 1.0 if entry["status"] == "pass" else 0.0 for entry in lane_entries}
-
-# Group lanes by intent. The DEFAULT map targets the compact t00-t10 lane set used by runner and
-# repos with matching numbering. A repo profile can override it via QUALITY_LANE_GROUPS
-# (JSON: {group: [lane_stem, ...]}) when it has additional or differently numbered lanes (for
-# example, teller). Custom maps use a generic score (reliability + mean of group scores). With
-# the default map an empty group scores 0.0 (fail-loud).
-DEFAULT_LANE_GROUPS = {
-    "behavioral_coverage": (
-        "t04_run_requirements_traceability_tests",
-        "t05_run_shell_unit_tests",
-    ),
-    "effectiveness_quality": (
-        "t00_run_code_quality_tests",
-        "t06_run_python_unit_tests",
-        "t07_run_mutation_tests",
-        "t08_run_fuzz_tests",
-    ),
-    "security_runtime_quality": (
-        "t01_run_av_test",
-        "t02_run_dependency_freshness_tests",
-        "t03_run_static_security_tests",
-        "t09_run_dynamic_security_tests",
-        "t10_verify_filevault_encryption_test",
-    ),
-}
-_groups_env = os.environ.get("QUALITY_LANE_GROUPS", "").strip()
-USING_CUSTOM_GROUPS = bool(_groups_env)
-if USING_CUSTOM_GROUPS:
-    LANE_GROUPS = {str(k): tuple(v) for k, v in json.loads(_groups_env).items()}
-else:
-    LANE_GROUPS = DEFAULT_LANE_GROUPS
-
-skipped_lanes = {
-    item.strip()
-    for item in os.environ.get("PARALLEL_CHECKS_SKIPPED_LANES", "").split(",")
-    if item.strip()
-}
-
-def score_group(group_name):
-    members = LANE_GROUPS[group_name]
-    values = [lane_status[name] for name in members if name in lane_status]
-    missing = [
-        name
-        for name in members
-        if name not in lane_status and name not in skipped_lanes
-    ]
-    if missing:
-        # Surface drift: a configured lane is no longer being executed/discovered.
-        sys.stderr.write(
-            f"⚠️  quality scoring: group '{group_name}' missing lanes: {missing}\n"
-        )
-    if not values:
-        # Empty group is a configuration failure, not a free pass.
-        return 0.0
-    return sum(values) / len(values)
-
-lane_reliability = (passed / total) if total else 0.0
-group_scores = {name: score_group(name) for name in LANE_GROUPS}
-if USING_CUSTOM_GROUPS:
-    group_values = list(group_scores.values())
-    mean_groups = (sum(group_values) / len(group_values)) if group_values else 0.0
-    overall_score = round((0.5 * lane_reliability + 0.5 * mean_groups) * 10.0, 3)
-else:
-    overall_score = round(
-        (
-            (0.35 * lane_reliability)
-            + (0.25 * group_scores.get("behavioral_coverage", 0.0))
-            + (0.20 * group_scores.get("effectiveness_quality", 0.0))
-            + (0.20 * group_scores.get("security_runtime_quality", 0.0))
-        )
-        * 10.0,
-        3,
-    )
-
-components = {"lane_reliability": round(lane_reliability, 4)}
-for _group_name, _group_score in group_scores.items():
-    components[_group_name] = round(_group_score, 4)
-
-run_payload = {
-    "run_started_at": run_started_at.isoformat(),
-    "wall_elapsed_seconds": wall_elapsed,
-    "total_lanes": total,
-    "passed_lanes": passed,
-    "failed_lanes": failed,
-    "score": overall_score,
-    "components": components,
-    "lanes": lane_entries,
-}
-
-lane_summary_path.write_text(json.dumps(run_payload, indent=2), encoding="utf-8")
-with history_path.open("a", encoding="utf-8") as fh:
-    fh.write(json.dumps(run_payload, separators=(",", ":")) + "\n")
-
-history_rows = []
-for line in history_path.read_text(encoding="utf-8").splitlines():
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        history_rows.append(json.loads(line))
-    except json.JSONDecodeError:
-        continue
-
-last_20 = history_rows[-20:]
-wall_samples = [row.get("wall_elapsed_seconds", 0) for row in last_20]
-score_samples = [row.get("score", 0.0) for row in last_20]
-now = datetime.now(tz=timezone.utc)
-recent_14d = []
-for row in history_rows:
-    stamp = row.get("run_started_at")
-    try:
-        parsed = datetime.fromisoformat(stamp)
-    except Exception:
-        continue
-    if parsed >= now - timedelta(days=14):
-        recent_14d.append(row)
-
-def percentile(values, p):
-    if not values:
-        return 0.0
-    ordered = sorted(values)
-    rank = (len(ordered) - 1) * p
-    lower = math.floor(rank)
-    upper = math.ceil(rank)
-    if lower == upper:
-        return float(ordered[lower])
-    weight = rank - lower
-    return float(ordered[lower] + (ordered[upper] - ordered[lower]) * weight)
-
-p50 = percentile(wall_samples, 0.50)
-p95 = percentile(wall_samples, 0.95)
-warn = p95 > 150.0 and len(wall_samples) >= 3
-fail_gate = p95 > 160.0 and len(wall_samples) >= 3
-
-trend_payload = {
-    "latest_run_started_at": run_payload["run_started_at"],
-    "latest_score": overall_score,
-    "rolling_21_runs": {
-        "count": len(last_20),
-        "score_avg": round(sum(score_samples) / len(score_samples), 3) if score_samples else 0.0,
-        "wall_p50_seconds": round(p50, 2),
-        "wall_p95_seconds": round(p95, 2),
-    },
-    "rolling_14d": {
-        "count": len(recent_14d),
-        "score_avg": round(sum(row.get("score", 0.0) for row in recent_14d) / len(recent_14d), 3) if recent_14d else 0.0,
-        "pass_reliability": round(
-            sum((row.get("passed_lanes", 0) / row.get("total_lanes", 1)) for row in recent_14d) / len(recent_14d),
-            4,
-        ) if recent_14d else 0.0,
-    },
-    "performance_slo": {
-        "target_p50_seconds": 130,
-        "target_p95_seconds": 150,
-        "warn": warn,
-        "fail": fail_gate,
-    },
-}
-trend_path.write_text(json.dumps(trend_payload, indent=2), encoding="utf-8")
-PY
-echo "Quality telemetry: ${TELEMETRY_DIR}/quality-history.ndjson"
-echo "Quality trend: ${TELEMETRY_DIR}/quality-trend.json"
-fi
 
 #R030: Print overall pass/fail gate and exit code.
 if [[ "$fail_count" -eq 0 ]]; then

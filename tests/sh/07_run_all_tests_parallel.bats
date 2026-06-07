@@ -125,11 +125,6 @@ setup() {
   grep -Fq 'for skipped_lane_stem in ${skipped_lane_stems[@]+"${skipped_lane_stems[@]}"}; do' "$SCRIPT"
 }
 
-@test "quality telemetry is opt-out" {
-  #R070-T01: telemetry block is guarded by QUALITY_SCORING_ENABLED
-  grep -q 'QUALITY_SCORING_ENABLED' "$SCRIPT"
-}
-
 @test "discovers per-repo run-all pointers in runners mode" {
   #R011-T01: runners discovery is gated on PARALLEL_CHECKS_RUNNERS_MODE via a shallow find + glob
   grep -q 'PARALLEL_CHECKS_RUNNERS_MODE' "$SCRIPT"
