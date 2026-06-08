@@ -580,12 +580,12 @@ else:
                 text(
                     """
                     SELECT mr.transaction_id, c.email_message_id
-                      FROM teller.transaction_email_match_run mr
-                      JOIN teller.transaction_email_candidate c
+                      FROM matchy.transaction_email_match_run mr
+                      JOIN matchy.transaction_email_candidate c
                         ON c.match_run_id = mr.match_run_id
                      WHERE NOT EXISTS (
                            SELECT 1
-                             FROM teller.transaction_email_match m
+                             FROM matchy.transaction_email_match m
                             WHERE m.transaction_id = mr.transaction_id
                               AND m.active = TRUE
                        )
@@ -606,7 +606,7 @@ else:
                     """
                     SELECT match_id, email_message_id
                          , transaction_id
-                      FROM teller.transaction_email_match
+                      FROM matchy.transaction_email_match
                      WHERE active = TRUE
                      ORDER BY updated_at DESC NULLS LAST, match_id DESC
                      LIMIT 8
@@ -633,7 +633,7 @@ else:
                              WHERE t.status = 'posted'
                                AND NOT EXISTS (
                                      SELECT 1
-                                       FROM teller.transaction_email_match m
+                                       FROM matchy.transaction_email_match m
                                       WHERE m.transaction_id = t.transaction_id
                                         AND m.active = TRUE
                                  )
@@ -648,7 +648,7 @@ else:
                         seeded_run = conn.execute(
                             text(
                                 """
-                                INSERT INTO teller.transaction_email_match_run (
+                                INSERT INTO matchy.transaction_email_match_run (
                                     transaction_id,
                                     trigger_source,
                                     model_name,
@@ -657,10 +657,10 @@ else:
                                     completed_at
                                 ) VALUES (
                                     :transaction_id,
-                                    CAST('manual' AS teller.matchy_trigger_source),
+                                    CAST('manual' AS matchy.matchy_trigger_source),
                                     'dast_seed',
                                     'dast_seed',
-                                    CAST('succeeded' AS teller.matchy_run_status),
+                                    CAST('succeeded' AS matchy.matchy_run_status),
                                     CURRENT_TIMESTAMP
                                 )
                                 RETURNING match_run_id
@@ -672,7 +672,7 @@ else:
                             conn.execute(
                                 text(
                                     """
-                                    INSERT INTO teller.transaction_email_candidate (
+                                    INSERT INTO matchy.transaction_email_candidate (
                                         match_run_id,
                                         transaction_id,
                                         email_message_id,
@@ -719,7 +719,7 @@ else:
                     seeded_active = conn.execute(
                         text(
                             """
-                            INSERT INTO teller.transaction_email_match (
+                            INSERT INTO matchy.transaction_email_match (
                                 transaction_id,
                                 email_message_id,
                                 state,
@@ -728,8 +728,8 @@ else:
                             ) VALUES (
                                 :transaction_id,
                                 :email_message_id,
-                                CAST('ai_match_confident' AS teller.transaction_email_match_state),
-                                CAST('ai' AS teller.transaction_email_match_selected_by),
+                                CAST('ai_match_confident' AS matchy.transaction_email_match_state),
+                                CAST('ai' AS matchy.transaction_email_match_selected_by),
                                 TRUE
                             )
                             RETURNING match_id
@@ -755,7 +755,7 @@ else:
                         seeded_run = conn.execute(
                             text(
                                 """
-                                INSERT INTO teller.transaction_email_match_run (
+                                INSERT INTO matchy.transaction_email_match_run (
                                     transaction_id,
                                     trigger_source,
                                     model_name,
@@ -764,10 +764,10 @@ else:
                                     completed_at
                                 ) VALUES (
                                     :transaction_id,
-                                    CAST('manual' AS teller.matchy_trigger_source),
+                                    CAST('manual' AS matchy.matchy_trigger_source),
                                     'dast_seed',
                                     'dast_seed',
-                                    CAST('succeeded' AS teller.matchy_run_status),
+                                    CAST('succeeded' AS matchy.matchy_run_status),
                                     CURRENT_TIMESTAMP
                                 )
                                 RETURNING match_run_id
@@ -779,7 +779,7 @@ else:
                             conn.execute(
                                 text(
                                     """
-                                    INSERT INTO teller.transaction_email_candidate (
+                                    INSERT INTO matchy.transaction_email_candidate (
                                         match_run_id,
                                         transaction_id,
                                         email_message_id,
@@ -893,7 +893,7 @@ PY
     fi
   fi
   if [[ "$dast_app_python" == "python3" ]] && [[ -d "./${VENV_NAME}/lib" ]]; then
-    for site_packages_dir in ./${VENV_NAME}/lib/python*/site-packages; do
+    for site_packages_dir in "./${VENV_NAME}"/lib/python*/site-packages; do
       if [[ -d "$site_packages_dir" ]]; then
         local site_packages_dir_abs
         site_packages_dir_abs="$(cd "$site_packages_dir" && pwd)"
@@ -1557,7 +1557,7 @@ if [[ "$RUN_SAST" == "true" ]]; then
     "https://github.com/Yelp/detect-secrets"
   echo "▶ Running detect-secrets"
   detect-secrets scan --all-files --force-use-all-plugins \
-    --exclude-files '(^\.git/|^${VENV_NAME}/|^artifacts/venv/security/|^artifacts/security/|^artifacts/security-dast/|^artifacts/parallel/|^artifacts/mutation/|^artifacts/fuzz/|^artifacts/cache/ruff/|^artifacts/cache/pytest/|^artifacts/cache/hypothesis/|^artifacts/cache/egg-info/|^backups/|^archive/backup_extracts/|^config/bank_statements/|^src/macos-ui/\.derivedData-ui-tests/|^src/macos-ui/\.build/|^requirements/)' \
+    --exclude-files "(^\\.git/|^${VENV_NAME}/|^artifacts/venv/security/|^artifacts/security/|^artifacts/security-dast/|^artifacts/parallel/|^artifacts/mutation/|^artifacts/fuzz/|^artifacts/cache/ruff/|^artifacts/cache/pytest/|^artifacts/cache/hypothesis/|^artifacts/cache/egg-info/|^backups/|^archive/backup_extracts/|^config/bank_statements/|^src/macos-ui/\\.derivedData-ui-tests/|^src/macos-ui/\\.build/|^requirements/)" \
     > "${REPORT_DIR}/detect-secrets.json"
 
   run_gitleaks_sast "${REPORT_DIR}/gitleaks.json"

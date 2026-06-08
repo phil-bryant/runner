@@ -115,7 +115,7 @@ def main() -> int:
             """
             SELECT COUNT(*)
               FROM generate_series(1, %(canonical_max_id)s) AS expected_id
-         LEFT JOIN teller.nys_snw_category c
+         LEFT JOIN classy.nys_snw_category c
                 ON c.nys_snw_category_id = expected_id
                AND c.is_seed = TRUE
              WHERE c.nys_snw_category_id IS NULL
@@ -126,7 +126,7 @@ def main() -> int:
             """
             SELECT expected_id
               FROM generate_series(1, %(canonical_max_id)s) AS expected_id
-         LEFT JOIN teller.nys_snw_category c
+         LEFT JOIN classy.nys_snw_category c
                 ON c.nys_snw_category_id = expected_id
                AND c.is_seed = TRUE
              WHERE c.nys_snw_category_id IS NULL
@@ -145,7 +145,7 @@ def main() -> int:
         unexpected_seed_count = conn.exec_driver_sql(
             """
             SELECT COUNT(*)
-              FROM teller.nys_snw_category
+              FROM classy.nys_snw_category
              WHERE is_seed = TRUE
                AND (nys_snw_category_id < 1 OR nys_snw_category_id > %(canonical_max_id)s)
             """,
@@ -154,7 +154,7 @@ def main() -> int:
         unexpected_seed_rows = conn.exec_driver_sql(
             """
             SELECT nys_snw_category_id, level_1_name, categorization
-              FROM teller.nys_snw_category
+              FROM classy.nys_snw_category
              WHERE is_seed = TRUE
                AND (nys_snw_category_id < 1 OR nys_snw_category_id > %(canonical_max_id)s)
              ORDER BY nys_snw_category_id
@@ -172,12 +172,12 @@ def main() -> int:
         seed_count_drift = conn.exec_driver_sql(
             """
             SELECT ABS(COUNT(*) - %(canonical_seed_count)s)
-              FROM teller.nys_snw_category
+              FROM classy.nys_snw_category
              WHERE is_seed = TRUE
             """,
             {"canonical_seed_count": seed_row_count},
         ).scalar_one()
-        seed_count = conn.exec_driver_sql("SELECT COUNT(*) FROM teller.nys_snw_category WHERE is_seed = TRUE").scalar_one()
+        seed_count = conn.exec_driver_sql("SELECT COUNT(*) FROM classy.nys_snw_category WHERE is_seed = TRUE").scalar_one()
         append_invariant(
             report,
             "seed_row_count_drift",
@@ -186,7 +186,7 @@ def main() -> int:
             [{"observed_seed_row_count": int(seed_count), "expected_seed_row_count": int(seed_row_count)}] if seed_count_drift else [],
         )
         control_predicate = " OR ".join([f"{field} ~ '[[:cntrl:]]'" for field in TEXT_FIELDS])
-        control_count = conn.exec_driver_sql(f"SELECT COUNT(*) FROM teller.nys_snw_category WHERE {control_predicate}").scalar_one()
+        control_count = conn.exec_driver_sql(f"SELECT COUNT(*) FROM classy.nys_snw_category WHERE {control_predicate}").scalar_one()
         append_invariant(
             report,
             "control_characters_in_hierarchy",
@@ -195,7 +195,7 @@ def main() -> int:
             [],
         )
         empty_predicate = " AND ".join([f"NULLIF(BTRIM(COALESCE({field}, '')), '') IS NULL" for field in TEXT_FIELDS])
-        empty_count = conn.exec_driver_sql(f"SELECT COUNT(*) FROM teller.nys_snw_category WHERE {empty_predicate}").scalar_one()
+        empty_count = conn.exec_driver_sql(f"SELECT COUNT(*) FROM classy.nys_snw_category WHERE {empty_predicate}").scalar_one()
         append_invariant(
             report,
             "empty_hierarchy_rows",
@@ -206,8 +206,8 @@ def main() -> int:
         orphaned_count = conn.exec_driver_sql(
             """
             SELECT COUNT(*)
-              FROM teller.transaction_nys_snw_category t
-         LEFT JOIN teller.nys_snw_category c
+              FROM classy.transaction_nys_snw_category t
+         LEFT JOIN classy.nys_snw_category c
                 ON c.nys_snw_category_id = t.nys_snw_category_id
              WHERE c.nys_snw_category_id IS NULL
             """

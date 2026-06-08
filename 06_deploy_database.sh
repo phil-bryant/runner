@@ -94,6 +94,13 @@ PSQL_OPTS=(-v ON_ERROR_STOP=1)
 if [[ "$DB_DIALECT" == "sqlite" || "${PROFILE_TARGET:-local}" == "sqlite" ]]; then
     SQLITE_DB_PATH="${SQLITE_PATH:-}"
     SQLITE_CIPHER_KEY="${SQLCIPHER_KEY:-${TELLER_DB_SQLCIPHER_KEY:-}}"
+    #R072: Back-compat for repo-local profile helpers that intentionally omit
+    #R072: SQLCIPHER_KEY from default exports unless requested explicitly.
+    if [[ -z "$SQLITE_CIPHER_KEY" && -x "$DB_PROFILE_HELPER" ]]; then
+        if "$DB_PROFILE_HELPER" --help 2>/dev/null | rg -q -- '--print-sqlcipher-key'; then
+            SQLITE_CIPHER_KEY="$("$DB_PROFILE_HELPER" --print-sqlcipher-key || true)"
+        fi
+    fi
     SQLITE_SCHEMA_FILE="${SQLITE_SQL_DIR}/create_database.sql"
     if [[ -z "$SQLITE_DB_PATH" ]]; then
         echo "SQLite deploy requires SQLITE_PATH from db profile export."
@@ -166,8 +173,10 @@ if [[ "${PROFILE_TARGET:-local}" == "managed" ]]; then
             -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DBNAME" "$@"
     }
 
-    #R070: Ensure the teller schema exists before applying schema objects.
+    #R070: Ensure product schemas exist before applying schema objects.
     run_psql_managed -c "CREATE SCHEMA IF NOT EXISTS teller;"
+    run_psql_managed -c "CREATE SCHEMA IF NOT EXISTS classy;"
+    run_psql_managed -c "CREATE SCHEMA IF NOT EXISTS matchy;"
 
     #R070: Apply teller schema files in declared dependency order.
     run_psql_managed -f "${SQL_DIR}/teller_enums.sql"
@@ -199,7 +208,7 @@ if [[ "${PROFILE_TARGET:-local}" == "managed" ]]; then
     run_psql_managed -f "${SQL_DIR}/teller_transaction_email_match_audit.sql"
     #R045: Ensure transaction classification FK cascades deletes from teller.transaction.
     run_psql_managed -c \
-"ALTER TABLE teller.transaction_nys_snw_category \
+"ALTER TABLE classy.transaction_nys_snw_category \
  DROP CONSTRAINT IF EXISTS transaction_nys_snw_category_transaction_id_fkey, \
  ADD CONSTRAINT transaction_nys_snw_category_transaction_id_fkey \
  FOREIGN KEY (transaction_id) REFERENCES teller.transaction(transaction_id) ON DELETE CASCADE;"
@@ -314,7 +323,7 @@ run_psql_teller -f "${SQL_DIR}/teller_transaction_email_match.sql"
 run_psql_teller -f "${SQL_DIR}/teller_transaction_email_match_audit.sql"
 #R045: Ensure transaction classification FK cascades deletes from teller.transaction.
 run_psql_teller -c \
-"ALTER TABLE teller.transaction_nys_snw_category \
+"ALTER TABLE classy.transaction_nys_snw_category \
  DROP CONSTRAINT IF EXISTS transaction_nys_snw_category_transaction_id_fkey, \
  ADD CONSTRAINT transaction_nys_snw_category_transaction_id_fkey \
  FOREIGN KEY (transaction_id) REFERENCES teller.transaction(transaction_id) ON DELETE CASCADE;"

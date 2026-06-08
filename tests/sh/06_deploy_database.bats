@@ -122,6 +122,12 @@ setup() {
   grep -q 'SQLITE_SQL_DIR' "$SCRIPT"
 }
 
+@test "script resolves sqlite key via explicit helper mode when needed" {
+  #R072-T01: source resolves SQLCIPHER_KEY using --print-sqlcipher-key when default exports omit it
+  grep -q -- '--print-sqlcipher-key' "$SCRIPT"
+  grep -q 'SQLITE_CIPHER_KEY="\$("\$DB_PROFILE_HELPER" --print-sqlcipher-key || true)"' "$SCRIPT"
+}
+
 @test "script documents skipping pgtap creation on managed targets" {
   #R075-T01: source documents skipping pgTAP creation on managed targets
   grep -q 'Skip pgtap extension creation on managed targets' "$SCRIPT"

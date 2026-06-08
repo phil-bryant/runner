@@ -448,6 +448,7 @@ if [[ "$RUN_SHELL_TESTS" == "true" ]]; then
       done
     else
       echo "▶ Running shell unit tests (bats, parallel by file; jobs=${BATS_JOBS_RESOLVED})..."
+      # shellcheck disable=SC2016
       printf '%s\0' "${bats_files[@]}" | \
         BATS_FILTER="$BATS_FILTER" \
         xargs -0 -P "$BATS_JOBS_RESOLVED" -I {} bash -c '
@@ -773,7 +774,10 @@ fi
 if [[ "$RUN_MACOS_UI_REGRESSION_TESTS" == "true" ]]; then
   echo "▶ Running macOS UI regression test lane..."
   # Resolve the lane by content so repo renumbers/relocations stay safe.
-  ui_regression_lane="$(ls ./tests/t*_run_macos_ui_regression_tests.sh 2>/dev/null | sort -V | head -n1)"
+  shopt -s nullglob
+  ui_regression_candidates=(./tests/t*_run_macos_ui_regression_tests.sh)
+  shopt -u nullglob
+  ui_regression_lane="$(printf '%s\n' "${ui_regression_candidates[@]}" | sort -V | head -n1)"
   if [[ -z "$ui_regression_lane" ]]; then
     echo "❌ macOS UI regression lane (tests/t*_run_macos_ui_regression_tests.sh) not found." >&2
     exit 1

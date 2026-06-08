@@ -107,6 +107,11 @@ Design: When the dialect or target is `sqlite` it validates `SQLITE_PATH` and th
 Tests:
 - R071-T01: Assert the source applies the SQLite schema via `sqlcipher` from `SQLITE_SQL_DIR`.
 
+R072  Statement: The script supports helpers that omit `SQLCIPHER_KEY` from default profile exports by resolving it explicitly only when needed.
+Design: In the SQLite branch, when `SQLCIPHER_KEY` and `TELLER_DB_SQLCIPHER_KEY` are empty, probe the profile helper for `--print-sqlcipher-key` support and use that output as the cipher key.
+Tests:
+- R072-T01: Assert the source conditionally resolves `SQLCIPHER_KEY` via `db_profile_export.sh --print-sqlcipher-key` when default exports omit it.
+
 R075  Statement: The script intentionally skips pgTAP extension creation on managed targets because the extension is not allow-listed there.
 Design: The managed branch exits before any pgTAP creation and documents the deliberate skip inline.
 Tests:

@@ -320,7 +320,7 @@ class CheckDependencyFreshnessTests(unittest.TestCase):
             stderr = ""
 
         original_run = self.module.subprocess.run
-        self.module.subprocess.run = lambda *args, **kwargs: FakeResult()
+        self.module.subprocess.run = lambda *_args, **_kwargs: FakeResult()
         try:
             rows = self.module.run_outdated_list()
         finally:

@@ -522,6 +522,9 @@ run_gitleaks_sast() {
     if [[ ! -f "$tracked_file" ]]; then
       continue
     fi
+    if [[ "$tracked_file" == ".secrets.baseline" ]]; then
+      continue
+    fi
     if [[ "$tracked_file" == .cursor/* || "$tracked_file" == .cursor* ]]; then
       continue
     fi

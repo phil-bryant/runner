@@ -307,7 +307,7 @@ class TellerApiVersionFreshnessHelperTests(unittest.TestCase):
                     return self
 
                 #R005: nested helper function tag
-                def __exit__(self, exc_type, exc, tb):
+                def __exit__(self, _exc_type, _exc, _tb):
                     return False
 
                 @staticmethod

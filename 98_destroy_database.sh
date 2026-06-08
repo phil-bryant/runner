@@ -128,7 +128,7 @@ if [[ "${PROFILE_TARGET:-local}" == "managed" ]]; then
     echo "ℹ️  Destroying managed schema via profile=${PROFILE_NAME} host=${PG_HOST} port=${PG_PORT} db=${PG_DBNAME} user=${PG_USER} schema=${PG_SEARCH_PATH}"
 
     #R010: Require explicit destroy confirmation.
-    read -r -p "Are you sure you want to drop schema ${PG_SEARCH_PATH} and teller roles on ${PG_HOST}? This cannot be undone. Type 'destroy' to confirm: " confirmation
+    read -r -p "Are you sure you want to drop app schemas (${PG_SEARCH_PATH}) and app roles on ${PG_HOST}? This cannot be undone. Type 'destroy' to confirm: " confirmation
     if [ "$confirmation" != "destroy" ]; then
         echo "Destruction cancelled"
         exit 1
@@ -173,20 +173,56 @@ if [[ "${PROFILE_TARGET:-local}" == "managed" ]]; then
         exit 1
     fi
 
-    # On managed targets we cannot DROP DATABASE; drop the teller schema and teller roles only.
-    #R032: Validate managed schema identifier before destructive schema drop.
-    SCHEMA_NAME="${PG_SEARCH_PATH:-teller}"
-    if ! is_valid_pg_identifier "$SCHEMA_NAME"; then
-        echo "Refusing to destroy invalid schema identifier: ${SCHEMA_NAME}"
+    # On managed targets we cannot DROP DATABASE; drop all app schemas and app roles only.
+    #R032: Validate managed schema identifiers before destructive schema drops.
+    SCHEMA_LIST_RAW="${PG_SEARCH_PATH:-teller,classy,matchy}"
+    schema_names=()
+    IFS=',' read -r -a schema_entries <<< "$SCHEMA_LIST_RAW"
+    for entry in "${schema_entries[@]}"; do
+        SCHEMA_NAME="${entry#"${entry%%[![:space:]]*}"}"
+        SCHEMA_NAME="${SCHEMA_NAME%"${SCHEMA_NAME##*[![:space:]]}"}"
+        if [[ -z "$SCHEMA_NAME" ]]; then
+            continue
+        fi
+        if [[ "$SCHEMA_NAME" == "public" || "$SCHEMA_NAME" == "pg_catalog" || "$SCHEMA_NAME" == "information_schema" ]]; then
+            echo "Refusing to destroy reserved schema '${SCHEMA_NAME}'."
+            exit 1
+        fi
+        if ! is_valid_pg_identifier "$SCHEMA_NAME"; then
+            echo "Refusing to destroy invalid schema identifier: ${SCHEMA_NAME}"
+            exit 1
+        fi
+        schema_names+=("$SCHEMA_NAME")
+    done
+    if [[ ${#schema_names[@]} -eq 0 ]]; then
+        echo "Refusing to destroy empty schema list from PG_SEARCH_PATH='${SCHEMA_LIST_RAW}'."
         exit 1
     fi
     #R033: Identifier already validated; execute DROP SCHEMA directly for psql -c compatibility.
-    run_psql_managed -c "DROP SCHEMA IF EXISTS \"${SCHEMA_NAME}\" CASCADE;"
-    # Drop teller roles idempotently. Order matters: drop dependent roles before parents.
+    for SCHEMA_NAME in "${schema_names[@]}"; do
+        run_psql_managed -c "DROP SCHEMA IF EXISTS \"${SCHEMA_NAME}\" CASCADE;"
+    done
+    # Drop app roles idempotently. Order matters: drop dependent roles before parents.
+    run_psql_managed -c "DROP ROLE IF EXISTS matchy_service_writer;"
+    run_psql_managed -c "DROP ROLE IF EXISTS matchy_service_reader;"
+    run_psql_managed -c "DROP ROLE IF EXISTS matchy_migration_admin;"
+    run_psql_managed -c "DROP ROLE IF EXISTS matchy_write;"
+    run_psql_managed -c "DROP ROLE IF EXISTS matchy_read;"
+    run_psql_managed -c "DROP ROLE IF EXISTS matchy_admin;"
+    run_psql_managed -c "DROP ROLE IF EXISTS classy_api_writer;"
+    run_psql_managed -c "DROP ROLE IF EXISTS classy_api_reader;"
+    run_psql_managed -c "DROP ROLE IF EXISTS classy_migration_admin;"
+    run_psql_managed -c "DROP ROLE IF EXISTS classy_write;"
+    run_psql_managed -c "DROP ROLE IF EXISTS classy_read;"
+    run_psql_managed -c "DROP ROLE IF EXISTS classy_admin;"
+    run_psql_managed -c "DROP ROLE IF EXISTS teller_api_writer;"
+    run_psql_managed -c "DROP ROLE IF EXISTS teller_api_reader;"
+    run_psql_managed -c "DROP ROLE IF EXISTS teller_ingest_writer;"
+    run_psql_managed -c "DROP ROLE IF EXISTS teller_migration_admin;"
     run_psql_managed -c "DROP ROLE IF EXISTS teller_write;"
     run_psql_managed -c "DROP ROLE IF EXISTS teller_read;"
     run_psql_managed -c "DROP ROLE IF EXISTS teller_admin;"
-    # Drop the teller user last so any remaining dependencies surface as a clear error.
+    # Drop the app user last so any remaining dependencies surface as a clear error.
     run_psql_managed -c "DROP USER IF EXISTS teller;"
 
     #R025: Print completion status after teardown.
@@ -223,7 +259,7 @@ fi
 echo "ℹ️  Destroying local database via profile=${PROFILE_NAME:-local} db=${LOCAL_DBNAME}"
 
 #R010: Require explicit destroy confirmation.
-read -r -p "Are you sure you want to destroy database '${LOCAL_DBNAME}' and all teller roles? This cannot be undone. Type 'destroy' to confirm: " confirmation
+read -r -p "Are you sure you want to destroy database '${LOCAL_DBNAME}' and all app roles? This cannot be undone. Type 'destroy' to confirm: " confirmation
 
 if [ "$confirmation" != "destroy" ]; then
     echo "Destruction cancelled"
@@ -246,6 +282,22 @@ fi
 PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres \
     -c "DROP DATABASE IF EXISTS \"${LOCAL_DBNAME}\";"
 PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP USER IF EXISTS teller;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS matchy_service_writer;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS matchy_service_reader;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS matchy_migration_admin;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS matchy_write;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS matchy_read;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS matchy_admin;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS classy_api_writer;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS classy_api_reader;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS classy_migration_admin;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS classy_write;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS classy_read;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS classy_admin;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS teller_api_writer;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS teller_api_reader;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS teller_ingest_writer;"
+PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS teller_migration_admin;"
 PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS teller_admin;"
 PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS teller_write;"
 PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS teller_read;"

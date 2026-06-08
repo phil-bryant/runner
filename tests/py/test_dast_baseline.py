@@ -85,7 +85,7 @@ class DastBaselineTests(unittest.TestCase):
                 return self
 
             #R035: nested helper function tag
-            def __exit__(self, exc_type, exc, tb):
+            def __exit__(self, _exc_type, _exc, _tb):
                 return False
 
             #R035: nested helper function tag
@@ -96,19 +96,19 @@ class DastBaselineTests(unittest.TestCase):
                     return _Result(scalar=30)
                 if "MAX(match_audit_id)" in sql:
                     return _Result(scalar=40)
-                if "FROM teller.nys_snw_category" in sql:
+                if "FROM classy.nys_snw_category" in sql:
                     return _Result(
                         rows=[
                             (1, "a", "A", "b", "B", "c", "d", "cat", "apply", False),
                         ]
                     )
-                if "FROM teller.transaction_email_match" in sql:
+                if "FROM matchy.transaction_email_match" in sql:
                     return _Result(
                         rows=[
                             (2, "txn", "msg", "pending", "0.55", "manual", None, None, True, None),
                         ]
                     )
-                if "FROM teller.transaction_nys_snw_category" in sql:
+                if "FROM classy.transaction_nys_snw_category" in sql:
                     return _Result(rows=[("txn", 1, "rule")])
                 return _Result()
 

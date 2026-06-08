@@ -268,47 +268,29 @@ def _count_non_skipped_text_reports(base_dir: Path, names: list[str]) -> int:
     return total
 
 
-def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int | None:
-    #R001: Resolve traceability lane total from Summary output.
-    #R005: Resolve shell-unit totals from bats TAP plans/results.
-    #R010: Resolve python-unit totals from pytest summary output.
-    #R022: Resolve sql-unit totals from pg_prove/TAP summary output.
-    #R012: Resolve swift-unit totals from XCTest summary output.
-    #R015: Resolve artifact-summary lane totals from JSON fields.
-    #R018: Resolve macOS UI totals from scenario summaries/selectors.
-    #R020: Resolve quality lane totals from non-skipped sub-check reports.
-    #R025: Resolve security lane totals from discovered report artifacts.
-    #R030: Support unknown-lane fallback handling via shared resolver contract.
-    lane_stem = Path(lane_script).stem
-    log_text = _read_text(lane_log)
+#R030: Route log-derived lane totals through lightweight suffix dispatch.
+def _resolve_log_parsed_lane_count(lane_stem: str, log_text: str, repo_root: Path) -> int | None:
+    lane_parsers = (
+        ("run_requirements_traceability_tests", lambda: _parse_traceability_total(log_text)),
+        ("run_shell_unit_tests", lambda: _parse_bats_total(log_text)),
+        ("run_python_unit_tests", lambda: _parse_pytest_total(log_text)),
+        ("run_sql_unit_tests", lambda: _parse_sql_unit_total(log_text)),
+        ("run_swift_unit_tests", lambda: _parse_swift_xctest_total(log_text)),
+        ("run_macos_ui_regression_tests", lambda: _parse_macos_ui_regression_total(log_text, repo_root)),
+        ("run_cpp_integration_tests", lambda: _parse_cpp_integration_total(log_text)),
+    )
+    for suffix, parser in lane_parsers:
+        if lane_stem.endswith(suffix):
+            return parser()
+    return None
 
-    if lane_stem.endswith("run_requirements_traceability_tests"):
-        return _parse_traceability_total(log_text)
 
-    if lane_stem.endswith("run_shell_unit_tests"):
-        return _parse_bats_total(log_text)
-
-    if lane_stem.endswith("run_python_unit_tests"):
-        return _parse_pytest_total(log_text)
-
-    if lane_stem.endswith("run_sql_unit_tests"):
-        return _parse_sql_unit_total(log_text)
-
-    if lane_stem.endswith("run_swift_unit_tests"):
-        return _parse_swift_xctest_total(log_text)
-
-    if lane_stem.endswith("run_macos_ui_regression_tests"):
-        return _parse_macos_ui_regression_total(log_text, repo_root)
-
-    if lane_stem.endswith("run_cpp_integration_tests"):
-        return _parse_cpp_integration_total(log_text)
-
+#R030: Resolve artifact-summary lane totals for quality/dependency/fuzz/mutation.
+def _resolve_artifact_lane_count(lane_stem: str, repo_root: Path) -> int | None:
     if lane_stem.endswith("run_fuzz_tests"):
         return _read_int_field(repo_root / "artifacts/fuzz/fuzz-summary.json", "property_test_count")
-
     if lane_stem.endswith("run_mutation_tests"):
         return _read_int_field(repo_root / "artifacts/mutation/mutation-summary.json", "total")
-
     if lane_stem.endswith("run_code_quality_tests"):
         quality_dir = repo_root / "artifacts/quality/reports"
         quality_checks = _count_non_skipped_text_reports(
@@ -316,7 +298,6 @@ def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int
             ["vulture.txt", "radon.txt", "xenon.txt", "periphery.txt", "lizard.txt"],
         )
         return quality_checks if quality_checks > 0 else None
-
     if lane_stem.endswith("run_dependency_freshness_tests"):
         security_dir = repo_root / "artifacts/security"
         dependency_checks = _count_existing(
@@ -330,7 +311,11 @@ def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int
             ],
         )
         return dependency_checks if dependency_checks > 0 else None
+    return None
 
+
+#R030: Resolve security-lane totals from discovered static/dynamic artifacts.
+def _resolve_security_lane_count(lane_stem: str, log_text: str, repo_root: Path) -> int | None:
     if lane_stem.endswith("run_static_security_tests"):
         static_default_dir = repo_root / "artifacts/security/reports"
         static_report_dir = _extract_reports_dir_from_log(log_text, repo_root, static_default_dir)
@@ -348,7 +333,6 @@ def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int
             ],
         )
         return static_checks if static_checks > 0 else None
-
     if lane_stem.endswith("run_dynamic_security_tests"):
         dynamic_default_dir = repo_root / "artifacts/security-dast"
         dynamic_report_dir = _extract_reports_dir_from_log(log_text, repo_root, dynamic_default_dir)
@@ -360,7 +344,31 @@ def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int
         if (dynamic_report_dir / "category-integrity.json").is_file():
             dynamic_checks += 1
         return dynamic_checks if dynamic_checks > 0 else None
+    return None
 
+
+def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int | None:
+    #R001: Resolve traceability lane total from Summary output.
+    #R005: Resolve shell-unit totals from bats TAP plans/results.
+    #R010: Resolve python-unit totals from pytest summary output.
+    #R022: Resolve sql-unit totals from pg_prove/TAP summary output.
+    #R012: Resolve swift-unit totals from XCTest summary output.
+    #R015: Resolve artifact-summary lane totals from JSON fields.
+    #R018: Resolve macOS UI totals from scenario summaries/selectors.
+    #R020: Resolve quality lane totals from non-skipped sub-check reports.
+    #R025: Resolve security lane totals from discovered report artifacts.
+    #R030: Support unknown-lane fallback handling via shared resolver contract.
+    lane_stem = Path(lane_script).stem
+    log_text = _read_text(lane_log)
+
+    for resolver in (
+        lambda: _resolve_log_parsed_lane_count(lane_stem, log_text, repo_root),
+        lambda: _resolve_artifact_lane_count(lane_stem, repo_root),
+        lambda: _resolve_security_lane_count(lane_stem, log_text, repo_root),
+    ):
+        count = resolver()
+        if count is not None:
+            return count
     return None
 
 

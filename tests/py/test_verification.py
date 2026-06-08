@@ -23,44 +23,58 @@ def _verifier(tmp_path):
 
 
 #R001: shard-3 function tag
+def _constant_string_first_arg(call: ast.Call) -> str | None:
+    if not call.args:
+        return None
+    first_arg = call.args[0]
+    if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+        return first_arg.value
+    return None
+
+
+#R001: shard-3 function tag
+def _is_env_flag_false_call(call: ast.Call) -> bool:
+    return isinstance(call.func, ast.Attribute) and call.func.attr == "_env_flag_false"
+
+
+#R001: shard-3 function tag
+def _is_os_environ_get_call(call: ast.Call) -> bool:
+    if not (isinstance(call.func, ast.Attribute) and call.func.attr == "get"):
+        return False
+    owner = call.func.value
+    return (
+        isinstance(owner, ast.Attribute)
+        and owner.attr == "environ"
+        and isinstance(owner.value, ast.Name)
+        and owner.value.id == "os"
+    )
+
+
+#R001: shard-3 function tag
+def _is_traceability_env_knob(name: str) -> bool:
+    return (
+        name.startswith("STRICT_TRACEABILITY_")
+        or name.startswith("TRACEABILITY_")
+        or name == "SHELL_BATS_ROOTS"
+    )
+
+
+#R001: shard-3 function tag
 def _extract_traceability_env_knobs_from_source(source_text: str) -> set[str]:
     knobs: set[str] = set()
     tree = ast.parse(source_text)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        if (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "_env_flag_false"
-            and node.args
-            and isinstance(node.args[0], ast.Constant)
-            and isinstance(node.args[0].value, str)
-        ):
-            knobs.add(node.args[0].value)
+        env_name = _constant_string_first_arg(node)
+        if env_name is None:
             continue
-        if not (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "get"
-            and node.args
-            and isinstance(node.args[0], ast.Constant)
-            and isinstance(node.args[0].value, str)
-        ):
+        if _is_env_flag_false_call(node):
+            knobs.add(env_name)
             continue
-        owner = node.func.value
-        if (
-            isinstance(owner, ast.Attribute)
-            and owner.attr == "environ"
-            and isinstance(owner.value, ast.Name)
-            and owner.value.id == "os"
-        ):
-            knobs.add(node.args[0].value)
-    return {
-        name
-        for name in knobs
-        if name.startswith("STRICT_TRACEABILITY_")
-        or name.startswith("TRACEABILITY_")
-        or name == "SHELL_BATS_ROOTS"
-    }
+        if _is_os_environ_get_call(node):
+            knobs.add(env_name)
+    return {name for name in knobs if _is_traceability_env_knob(name)}
 
 
 def test_strict_pair_matches_ids(tmp_path):
