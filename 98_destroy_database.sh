@@ -247,6 +247,28 @@ if [ -z "$POSTGRES_PASSWORD" ]; then
     exit 1
 fi
 
+#R015: shard-3 function tag
+drop_local_database_if_exists() {
+    local db_name="$1"
+    local drop_teller_view="${2:-false}"
+    local db_exists=""
+    #R031: Identifier already validated; use direct SQL compatible with psql -c.
+    db_exists="$(
+        PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres \
+            -tAc "SELECT 1 FROM pg_database WHERE datname = '${db_name}';"
+    )"
+    if [ "$db_exists" = "1" ]; then
+        if [[ "$drop_teller_view" == "true" ]]; then
+            PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d "$db_name" -c "DROP VIEW IF EXISTS teller.transaction_info_view;"
+        fi
+        PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres \
+            -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${db_name}' AND pid <> pg_backend_pid();"
+        #R031: Identifier already validated; execute DROP DATABASE directly.
+        PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres \
+            -c "DROP DATABASE IF EXISTS \"${db_name}\";"
+    fi
+}
+
 # Use the resolved profile's DB name when available so a non-default local DB still works.
 require_nonempty_env "Local destroy profile" PG_DBNAME
 #R030: Validate local DB identifier before local teardown SQL executes.
@@ -268,19 +290,46 @@ fi
 
 #R015: Clean dependent view and terminate sessions before database drop.
 #R031: Identifier already validated; use direct SQL compatible with psql -c.
-db_exists="$(
+local_db_exists="$(
     PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres \
         -tAc "SELECT 1 FROM pg_database WHERE datname = '${LOCAL_DBNAME}';"
 )"
-if [ "$db_exists" = "1" ]; then
+if [ "$local_db_exists" = "1" ]; then
     PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d "$LOCAL_DBNAME" -c "DROP VIEW IF EXISTS teller.transaction_info_view;"
     PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres \
         -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${LOCAL_DBNAME}' AND pid <> pg_backend_pid();"
 fi
-#R020: Drop database, user, and teller roles idempotently.
-#R031: Identifier already validated; execute DROP DATABASE directly.
 PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres \
     -c "DROP DATABASE IF EXISTS \"${LOCAL_DBNAME}\";"
+
+#R020: Drop any additional non-system databases still owned by teller so role teardown can succeed.
+owned_teller_dbs="$(
+    PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -tAc \
+        "SELECT d.datname
+           FROM pg_database d
+           JOIN pg_roles r ON r.oid = d.datdba
+          WHERE r.rolname = 'teller'
+            AND d.datname NOT IN ('template0', 'template1', 'postgres')
+            AND d.datname <> '${LOCAL_DBNAME}'
+          ORDER BY d.datname;"
+)"
+if [[ -n "$owned_teller_dbs" ]]; then
+    while IFS= read -r owned_db; do
+        owned_db="${owned_db#"${owned_db%%[![:space:]]*}"}"
+        owned_db="${owned_db%"${owned_db##*[![:space:]]}"}"
+        if [[ -z "$owned_db" ]]; then
+            continue
+        fi
+        if ! is_valid_pg_identifier "$owned_db"; then
+            echo "Refusing to destroy invalid database identifier discovered for teller-owned DB: ${owned_db}"
+            exit 1
+        fi
+        echo "ℹ️  Dropping additional teller-owned database '${owned_db}' to complete role teardown."
+        drop_local_database_if_exists "$owned_db" false
+    done <<< "$owned_teller_dbs"
+fi
+
+#R020: Drop user and teller roles idempotently.
 PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP USER IF EXISTS teller;"
 PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS matchy_service_writer;"
 PGPASSWORD="$POSTGRES_PASSWORD" psql "${PSQL_OPTS[@]}" -U postgres -d postgres -c "DROP ROLE IF EXISTS matchy_service_reader;"
