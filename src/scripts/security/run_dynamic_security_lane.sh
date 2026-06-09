@@ -1160,6 +1160,33 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._json({"detail": "not found"}, status=404)
 
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/v1/matchy/runs":
+            content_length = int(self.headers.get("Content-Length", "0") or "0")
+            raw_body = self.rfile.read(content_length) if content_length > 0 else b"{}"
+            try:
+                payload = json.loads(raw_body.decode("utf-8"))
+            except Exception:
+                self._json({"detail": "invalid JSON body"}, status=422)
+                return
+            transaction_ids = payload.get("transaction_ids")
+            if not isinstance(transaction_ids, list):
+                transaction_ids = []
+            results = []
+            for transaction_id in transaction_ids:
+                if isinstance(transaction_id, str) and transaction_id:
+                    results.append(
+                        {
+                            "transaction_id": transaction_id,
+                            "status": "succeeded",
+                            "match_run_id": 1,
+                        }
+                    )
+            self._json({"results": results})
+            return
+        self._json({"detail": "not found"}, status=404)
+
     def log_message(self, fmt, *args):
         return
 
@@ -1175,6 +1202,11 @@ PY
       export MAILCART_SERVICE_BASE_URL="$mailcart_stub_url"
       echo "▶ DAST Mailcart base URL: ${MAILCART_SERVICE_BASE_URL}"
     fi
+    local matchy_api_base_url="${MATCHY_API_BASE_URL:-${MAILCART_SERVICE_BASE_URL:-http://127.0.0.1:8790}}"
+    if [[ -z "${MATCHY_API_BASE_URL:-}" && -n "${MAILCART_SERVICE_BASE_URL:-}" ]]; then
+      # Prefer localhost hostname for TLS SAN compatibility on self-signed local certs.
+      matchy_api_base_url="${MAILCART_SERVICE_BASE_URL/127.0.0.1/localhost}"
+    fi
     echo "▶ Starting local classification API for Dynamic Application Security Testing (DAST) at ${base_url}"
     # Hand the already-resolved DAST token to the app via its env-token fallback so the spawned API
     # reuses it instead of making its own 1psa lookup (which fails when 1psa is unavailable/rate
@@ -1183,6 +1215,7 @@ PY
     TELLER_CLASSIFIER_WRITE_TOKEN="$dast_write_token" \
       MAILCART_API_WRITE_TOKEN="$dast_write_token" \
       MATCHY_API_AUTH_TOKEN="$dast_write_token" \
+      MATCHY_API_BASE_URL="$matchy_api_base_url" \
       CLASSY_ALLOW_ENV_WRITE_TOKEN="true" CLASSY_WRITE_TOKEN="$dast_write_token" \
       TELLER_CLASSIFIER_API_HOST="$base_host" TELLER_CLASSIFIER_API_PORT="$base_port" \
       CLASSIFICATION_API_HOST="$base_host" CLASSIFICATION_API_PORT="$base_port" \
