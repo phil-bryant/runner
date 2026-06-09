@@ -165,6 +165,7 @@ run_clamscan_once() {
   local report_path="$1"
   local scan_target="$2"
   local scan_target_abs="$3"
+  local clamav_exclude_dir_patterns="${CLAMAV_EXCLUDE_DIR_PATTERNS:-}"
   local heartbeat_seconds="${CLAMAV_HEARTBEAT_SECONDS:-15}"
   local poll_seconds="${CLAMAV_POLL_SECONDS:-1}"
   if ! [[ "$heartbeat_seconds" =~ ^[0-9]+$ ]] || (( heartbeat_seconds < 1 )); then
@@ -176,28 +177,46 @@ run_clamscan_once() {
   local start_ts
   start_ts="$(date +%s)"
   local next_heartbeat_ts=$(( start_ts + heartbeat_seconds ))
-  clamscan \
-    --recursive \
-    --infected \
-    --exclude-dir='\.git(/|$)' \
-    --exclude-dir='artifacts/security/reports(/|$)' \
-    --exclude-dir='artifacts/security(/|$)' \
-    --exclude-dir='artifacts/parallel(/|$)' \
-    --exclude-dir='artifacts/mutation(/|$)' \
-    --exclude-dir='artifacts/fuzz(/|$)' \
-    --exclude-dir='artifacts/macos-ui-regression(/|$)' \
-    --exclude-dir='\.derivedData-ui-tests(/|$)' \
-    --exclude-dir='artifacts/cache/hypothesis(/|$)' \
-    --exclude-dir='artifacts/cache/ruff(/|$)' \
-    --exclude-dir='artifacts/security-dast(/|$)' \
-    --exclude-dir='__pycache__' \
-    --exclude-dir='\.ruff_cache(/|$)' \
-    --exclude-dir='\.pytest_cache(/|$)' \
-    --exclude-dir='\.cursor(/|$)' \
-    --exclude-dir='\.semgrep-home(/|$)' \
-    --exclude-dir='/backups(/|$)' \
-    --exclude-dir='/archive(/|$)' \
-    "$scan_target" > "$report_path" 2>&1 &
+  local extra_exclude_log="(none)"
+  local -a clamav_args=(
+    --recursive
+    --infected
+    "--exclude-dir=\\.git(/|$)"
+    "--exclude-dir=artifacts/security/reports(/|$)"
+    "--exclude-dir=artifacts/security(/|$)"
+    "--exclude-dir=artifacts/parallel(/|$)"
+    "--exclude-dir=artifacts/mutation(/|$)"
+    "--exclude-dir=artifacts/fuzz(/|$)"
+    "--exclude-dir=artifacts/macos-ui-regression(/|$)"
+    "--exclude-dir=\\.derivedData-ui-tests(/|$)"
+    "--exclude-dir=artifacts/cache/hypothesis(/|$)"
+    "--exclude-dir=artifacts/cache/ruff(/|$)"
+    "--exclude-dir=artifacts/security-dast(/|$)"
+    "--exclude-dir=__pycache__"
+    "--exclude-dir=\\.ruff_cache(/|$)"
+    "--exclude-dir=\\.pytest_cache(/|$)"
+    "--exclude-dir=\\.cursor(/|$)"
+    "--exclude-dir=\\.semgrep-home(/|$)"
+    "--exclude-dir=/backups(/|$)"
+    "--exclude-dir=/archive(/|$)"
+  )
+  if [[ -n "$clamav_exclude_dir_patterns" ]]; then
+    local normalized_exclude_patterns="${clamav_exclude_dir_patterns//$'\n'/ }"
+    normalized_exclude_patterns="${normalized_exclude_patterns//,/ }"
+    local -a extra_exclude_patterns=()
+    read -r -a extra_exclude_patterns <<< "$normalized_exclude_patterns"
+    local extra_exclude_pattern=""
+    for extra_exclude_pattern in "${extra_exclude_patterns[@]}"; do
+      [[ -n "$extra_exclude_pattern" ]] || continue
+      clamav_args+=("--exclude-dir=${extra_exclude_pattern}")
+    done
+    if (( ${#extra_exclude_patterns[@]} > 0 )); then
+      extra_exclude_log="${extra_exclude_patterns[*]}"
+    fi
+  fi
+  echo "▶ ClamAV extra exclude patterns: ${extra_exclude_log}"
+  clamav_args+=("$scan_target")
+  clamscan "${clamav_args[@]}" > "$report_path" 2>&1 &
   local clamav_pid=$!
   echo "▶ ClamAV scan in progress (started) target=${scan_target_abs}"
   while kill -0 "$clamav_pid" >/dev/null 2>&1; do
