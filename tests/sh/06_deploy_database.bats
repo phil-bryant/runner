@@ -67,8 +67,9 @@ setup() {
 }
 
 @test "script builds the local teller schema in dependency order" {
-  #R030-T01: source applies ordered teller schema files starting with teller_enums.sql as teller
+  #R030-T01: source applies ordered schema files including teller_enums.sql then matchy_enums.sql.
   grep -q 'run_psql_teller -f "${SQL_DIR}/teller_enums.sql"' "$SCRIPT"
+  grep -q 'run_psql_teller -f "${SQL_DIR}/matchy_enums.sql"' "$SCRIPT"
 }
 
 @test "script resolves SQL directories relative to the script location" {

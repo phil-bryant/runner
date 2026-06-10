@@ -475,7 +475,7 @@ SQL
     #R065: Reapply known table-specific DDL adjustments from deploy script.
     if [ "${TABLE_RELATION}" = "transaction_nys_snw_category" ]; then
         run_psql_target <<'SQL'
-ALTER TABLE teller.transaction_nys_snw_category
+ALTER TABLE classy.transaction_nys_snw_category
     DROP CONSTRAINT IF EXISTS transaction_nys_snw_category_transaction_id_fkey,
     ADD CONSTRAINT transaction_nys_snw_category_transaction_id_fkey
     FOREIGN KEY (transaction_id)

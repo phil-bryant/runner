@@ -57,10 +57,10 @@ Design: As the `postgres` superuser it applies `configure_database.sql` with the
 Tests:
 - R025-T01: Assert the source applies `configure_database.sql` with the bootstrap variables.
 
-R030  Statement: The script builds the local teller schema objects by applying their SQL files in declared dependency order.
-Design: As the teller role it runs `run_psql_teller -f` over the ordered `teller_*.sql` files beginning with `teller_enums.sql`.
+R030  Statement: The script builds local Teller/Classy/Matchy schema objects by applying SQL files in declared dependency order.
+Design: As the teller role it runs `run_psql_teller -f` over ordered files beginning with `teller_enums.sql`, then `classy_*.sql`, `matchy_enums.sql`, and `matchy_*.sql`.
 Tests:
-- R030-T01: Assert the source applies the ordered teller schema files starting with `teller_enums.sql` as the teller role.
+- R030-T01: Assert the source applies ordered schema files including `teller_enums.sql` and `matchy_enums.sql` as the teller role.
 
 R035  Statement: The script resolves the SQL source directories relative to the resolved script location rather than the caller's path.
 Design: It sets `SQL_DIR` to `${SCRIPT_DIR}/src/sql/postgres` and `SQLITE_SQL_DIR` to `${SCRIPT_DIR}/src/sql/sqlite`.
@@ -73,7 +73,7 @@ Tests:
 - R040-T01: Assert the source applies `create_triggers.sql`.
 
 R045  Statement: The script repairs the transaction-classification foreign key so deleting a transaction cascades to its NYS SNW category rows.
-Design: It runs an `ALTER TABLE teller.transaction_nys_snw_category` that drops and re-adds `transaction_nys_snw_category_transaction_id_fkey` with `ON DELETE CASCADE`.
+Design: It runs an `ALTER TABLE classy.transaction_nys_snw_category` that drops and re-adds `transaction_nys_snw_category_transaction_id_fkey` with `ON DELETE CASCADE`.
 Tests:
 - R045-T01: Assert the source rebuilds the classification FK with `ON DELETE CASCADE`.
 
@@ -97,10 +97,10 @@ Design: For managed deploys it uses `TELLER_DB_PASSWORD` when set, otherwise req
 Tests:
 - R065-T01: Assert the source resolves the managed password from `PG_ONEPSA_ITEM` with a `TELLER_DB_PASSWORD` override.
 
-R070  Statement: The script applies the managed schema using the profile's connection user, creating the teller schema first and then the ordered schema files.
-Design: It defines `run_psql_managed()` against the resolved host/port/db/user, runs `CREATE SCHEMA IF NOT EXISTS teller;`, then applies the ordered `teller_*.sql` files.
+R070  Statement: The script applies the managed schema using the profile's connection user, creating product schemas first and then ordered schema files.
+Design: It defines `run_psql_managed()` against the resolved host/port/db/user, runs `CREATE SCHEMA IF NOT EXISTS teller/classy/matchy;`, then applies ordered `teller_*.sql`, `classy_*.sql`, `matchy_enums.sql`, and `matchy_*.sql` files.
 Tests:
-- R070-T01: Assert the source defines `run_psql_managed()` and creates the teller schema before applying managed schema files.
+- R070-T01: Assert the source defines `run_psql_managed()` and creates the teller/classy/matchy schemas before applying managed schema files.
 
 R071  Statement: The script deploys the SQLite dialect through sqlcipher when the profile selects a SQLite target.
 Design: When the dialect or target is `sqlite` it validates `SQLITE_PATH` and the cipher key, requires `sqlcipher` on PATH, and applies the SQLite `create_database.sql` from `SQLITE_SQL_DIR` keyed with `PRAGMA key`.

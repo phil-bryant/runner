@@ -78,7 +78,7 @@ Tests:
 - R060-T02: Verify trigger recreation is conditional on detecting the `updated_at` column.
 
 R065  Statement: Reapply known table-specific DDL fixups after scoped restore.
-Design: For `teller.transaction_nys_snw_category`, recreate the transaction foreign key with `ON DELETE CASCADE` to match the deploy invariant.
+Design: For `classy.transaction_nys_snw_category`, recreate the transaction foreign key with `ON DELETE CASCADE` to match the deploy invariant.
 Tests:
 - R065-T01: Verify scoped repair reapplies the `transaction_nys_snw_category` FK with `ON DELETE CASCADE`.
 
