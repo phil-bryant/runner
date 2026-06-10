@@ -122,6 +122,46 @@ read_backup_encryption_field() {
 }
 
 #R001: shard-3 function tag
+read_backup_encryption_field_with_aliases() {
+    local field_name="$1"
+    shift
+    local candidate_fields=("$field_name" "$@")
+    local candidate=""
+    local value=""
+
+    for candidate in "${candidate_fields[@]}"; do
+        value="$(read_backup_encryption_field "$candidate")"
+        if [[ -n "$value" ]]; then
+            printf '%s' "$value"
+            return
+        fi
+    done
+    printf ''
+}
+
+#R001: shard-3 function tag
+normalize_gpg_private_key() {
+    local key_text="$1"
+    local begin_marker='-----BEGIN PGP PRIVATE KEY BLOCK-----'
+    local end_marker='-----END PGP PRIVATE KEY BLOCK-----'
+    local key_body=""
+
+    # Accept either raw armored blocks or escaped one-line variants from env fallback.
+    key_text="${key_text//$'\r'/}"
+    key_text="${key_text//\\n/$'\n'}"
+
+    if [[ "$key_text" == *"$begin_marker"* && "$key_text" == *"$end_marker"* && "$key_text" != *$'\n'* ]]; then
+        key_body="${key_text#*"$begin_marker"}"
+        key_body="${key_body%%"$end_marker"*}"
+        key_body="$(printf '%s' "$key_body" | tr -s '[:space:]' '\n' | sed '/^$/d')"
+        printf '%s\n\n%s\n%s\n' "$begin_marker" "$key_body" "$end_marker"
+        return
+    fi
+
+    printf '%s\n' "$key_text"
+}
+
+#R001: shard-3 function tag
 init_gpg_home() {
     if [[ -n "$GPG_HOME" ]]; then
         return
@@ -151,16 +191,21 @@ load_backup_decryption_material() {
         echo "Backup decryption requires gpg_private_key in ${BACKUP_ENCRYPTION_ITEM} or POSTGRES_BACKUP_ENCRYPTION_GPG_PRIVATE_KEY."
         exit 1
     fi
-    gpg_passphrase="$(read_backup_encryption_field "gpg_private_key_passphrase")"
+    gpg_passphrase="$(read_backup_encryption_field_with_aliases "gpg_private_key_passphrase" "gpg_identity_passphrase")"
     if [[ -z "$gpg_passphrase" ]]; then
-        echo "Backup decryption requires gpg_private_key_passphrase in ${BACKUP_ENCRYPTION_ITEM} or POSTGRES_BACKUP_ENCRYPTION_GPG_PRIVATE_KEY_PASSPHRASE."
+        echo "Backup decryption requires gpg_private_key_passphrase (or legacy gpg_identity_passphrase) in ${BACKUP_ENCRYPTION_ITEM}."
+        echo "Env fallback keys: POSTGRES_BACKUP_ENCRYPTION_GPG_PRIVATE_KEY_PASSPHRASE or POSTGRES_BACKUP_ENCRYPTION_GPG_IDENTITY_PASSPHRASE."
         exit 1
     fi
     init_gpg_home
     private_key_path="$(mktemp "${TMPDIR:-/tmp}/runbook-private-key.XXXXXX")"
     cleanup_paths+=("$private_key_path")
-    printf '%s\n' "$gpg_private_key" >"$private_key_path"
-    gpg --batch --yes --homedir "$GPG_HOME" --pinentry-mode loopback --passphrase "$gpg_passphrase" --import "$private_key_path" >/dev/null 2>&1
+    normalize_gpg_private_key "$gpg_private_key" >"$private_key_path"
+    if ! gpg --batch --yes --homedir "$GPG_HOME" --pinentry-mode loopback --passphrase "$gpg_passphrase" --import "$private_key_path"; then
+        echo "Failed to import backup GPG private key from ${BACKUP_ENCRYPTION_ITEM}."
+        echo "Ensure gpg_private_key is a valid armored key block (multiline or escaped with \\n)."
+        exit 1
+    fi
 }
 
 #R001: shard-3 function tag
@@ -169,8 +214,11 @@ decrypt_backup_artifact() {
     local output_path="$2"
     local gpg_passphrase=""
 
-    gpg_passphrase="$(read_backup_encryption_field "gpg_private_key_passphrase")"
-    gpg --batch --yes --homedir "$GPG_HOME" --pinentry-mode loopback --passphrase "$gpg_passphrase" --output "$output_path" --decrypt "$encrypted_path" >/dev/null 2>&1
+    gpg_passphrase="$(read_backup_encryption_field_with_aliases "gpg_private_key_passphrase" "gpg_identity_passphrase")"
+    if ! gpg --batch --yes --homedir "$GPG_HOME" --pinentry-mode loopback --passphrase "$gpg_passphrase" --output "$output_path" --decrypt "$encrypted_path"; then
+        echo "Failed to decrypt backup artifact: $encrypted_path"
+        exit 1
+    fi
     chmod 600 "$output_path"
 }
 

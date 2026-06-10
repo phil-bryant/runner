@@ -100,6 +100,55 @@ require_nonempty_env() {
 }
 
 #R001: shard-3 function tag
+read_1psa_value_allowing_recovered_output() {
+    local mode="$1"
+    local item_name="$2"
+    local field_name="${3:-}"
+    local value=""
+    local status=0
+
+    set +e
+    if [[ "$mode" == "password" ]]; then
+        value="$(1psa -p "$item_name")"
+        status=$?
+    else
+        value="$(1psa -f "$item_name" "$field_name")"
+        status=$?
+    fi
+    set -e
+
+    if [[ "$status" -ne 0 && -z "$value" ]]; then
+        return "$status"
+    fi
+    if [[ "$status" -ne 0 && -n "$value" ]]; then
+        echo "WARN: 1psa returned non-zero for ${item_name} but produced a value; continuing." >&2
+    fi
+    printf '%s' "$value"
+}
+
+#R001: shard-3 function tag
+normalize_gpg_public_key() {
+    local key_text="$1"
+    local begin_marker='-----BEGIN PGP PUBLIC KEY BLOCK-----'
+    local end_marker='-----END PGP PUBLIC KEY BLOCK-----'
+    local key_body=""
+
+    # Accept either raw armored blocks or escaped one-line variants from env fallback.
+    key_text="${key_text//$'\r'/}"
+    key_text="${key_text//\\n/$'\n'}"
+
+    if [[ "$key_text" == *"$begin_marker"* && "$key_text" == *"$end_marker"* && "$key_text" != *$'\n'* ]]; then
+        key_body="${key_text#*"$begin_marker"}"
+        key_body="${key_body%%"$end_marker"*}"
+        key_body="$(printf '%s' "$key_body" | tr -s '[:space:]' '\n' | sed '/^$/d')"
+        printf '%s\n\n%s\n%s\n' "$begin_marker" "$key_body" "$end_marker"
+        return
+    fi
+
+    printf '%s\n' "$key_text"
+}
+
+#R001: shard-3 function tag
 encryption_env_var_for_field() {
     local field_name="$1"
     local normalized=""
@@ -177,8 +226,26 @@ fi
 init_gpg_home
 BACKUP_GPG_PUBLIC_KEY_PATH="$(mktemp "${TMPDIR:-/tmp}/runbook-backup-gpg-key.XXXXXX")"
 cleanup_paths+=("$BACKUP_GPG_PUBLIC_KEY_PATH")
-printf '%s\n' "$BACKUP_GPG_PUBLIC_KEY" >"$BACKUP_GPG_PUBLIC_KEY_PATH"
-gpg --batch --yes --homedir "$GPG_HOME" --import "$BACKUP_GPG_PUBLIC_KEY_PATH" >/dev/null 2>&1
+normalize_gpg_public_key "$BACKUP_GPG_PUBLIC_KEY" >"$BACKUP_GPG_PUBLIC_KEY_PATH"
+if ! gpg --batch --yes --homedir "$GPG_HOME" --import "$BACKUP_GPG_PUBLIC_KEY_PATH"; then
+    echo "Failed to import backup GPG public key from ${BACKUP_ENCRYPTION_ITEM}."
+    echo "Ensure gpg_public_key is a valid armored key block (multiline or escaped with \\n)."
+    exit 1
+fi
+if ! gpg --batch --yes --homedir "$GPG_HOME" --list-keys "$BACKUP_GPG_RECIPIENT" >/dev/null 2>&1; then
+    imported_fingerprint="$(
+        gpg --batch --yes --homedir "$GPG_HOME" --with-colons --fingerprint --list-keys \
+            | awk -F: '$1 == "fpr" { print $10; exit }'
+    )"
+    if [[ -n "$imported_fingerprint" ]]; then
+        echo "WARN: configured gpg_recipient '${BACKUP_GPG_RECIPIENT}' was not found in imported keyring; using imported fingerprint '${imported_fingerprint}'." >&2
+        BACKUP_GPG_RECIPIENT="$imported_fingerprint"
+    else
+        echo "Backup encryption recipient '${BACKUP_GPG_RECIPIENT}' is unavailable after key import."
+        echo "Set gpg_recipient to a fingerprint present in gpg_public_key."
+        exit 1
+    fi
+fi
 
 #R020: Create backup directory with restricted permissions.
 mkdir -p "$BACKUP_DIR"
@@ -228,7 +295,9 @@ if [[ "${PROFILE_TARGET:-local}" == "managed" ]]; then
             echo "Managed backup requires PG_ONEPSA_ITEM (from config/db-profiles.json) or TELLER_DB_PASSWORD."
             exit 1
         fi
-        MANAGED_PASSWORD="$(1psa -p "$PG_ONEPSA_ITEM")"
+        if ! MANAGED_PASSWORD="$(read_1psa_value_allowing_recovered_output "password" "$PG_ONEPSA_ITEM")"; then
+            MANAGED_PASSWORD=""
+        fi
     fi
     if [[ -z "$MANAGED_PASSWORD" ]]; then
         echo "Failed to read managed DB password (item: ${PG_ONEPSA_ITEM:-<unset>})"
@@ -266,9 +335,13 @@ MANIFEST_PATH="${BACKUP_DIR}/${BACKUP_BASENAME}.manifest.sha256"
 
 #R010: Resolve postgres password from configured 1psa item/field.
 if [ "$POSTGRES_PSA_FIELD" = "password" ]; then
-    POSTGRES_PASSWORD="$(1psa -p "$POSTGRES_PSA_ITEM")"
+    if ! POSTGRES_PASSWORD="$(read_1psa_value_allowing_recovered_output "password" "$POSTGRES_PSA_ITEM")"; then
+        POSTGRES_PASSWORD=""
+    fi
 else
-    POSTGRES_PASSWORD="$(1psa -f "$POSTGRES_PSA_ITEM" "$POSTGRES_PSA_FIELD")"
+    if ! POSTGRES_PASSWORD="$(read_1psa_value_allowing_recovered_output "field" "$POSTGRES_PSA_ITEM" "$POSTGRES_PSA_FIELD")"; then
+        POSTGRES_PASSWORD=""
+    fi
 fi
 
 #R015: Refuse backup when password lookup is empty.
