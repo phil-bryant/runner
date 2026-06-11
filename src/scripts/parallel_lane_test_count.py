@@ -311,6 +311,9 @@ def _resolve_log_parsed_lane_count(lane_stem: str, log_text: str, repo_root: Pat
         ("run_landing_unit_tests", lambda: _parse_vitest_total(log_text)),
         ("run_landing_e2e_tests", lambda: _parse_playwright_total(log_text)),
         ("run_landing_typecheck_tests", lambda: _parse_astro_check_total(log_text)),
+        # Generic pytest-based e2e lanes (e.g. the eggnest matching replay);
+        # must stay after the more specific *_landing_e2e_tests entry.
+        ("run_e2e_tests", lambda: _parse_pytest_total(log_text)),
     )
     for suffix, parser in lane_parsers:
         if lane_stem.endswith(suffix):

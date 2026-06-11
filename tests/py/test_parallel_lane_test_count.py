@@ -50,6 +50,15 @@ class ParallelLaneTestCountTests(unittest.TestCase):
         text = "Executed 12 tests, with 0 failures in 0.123 seconds"
         self.assertEqual(self.module._parse_swift_xctest_total(text), 12)
 
+    def test_e2e_lane_total_from_pytest_summary(self):
+        #R010-T03: Verify a pytest-based e2e lane resolves its total through the pytest parser, including xfailed/xpassed outcomes.
+        text = "=================== 20 passed, 5 xfailed, 1 xpassed in 0.08s ==================="
+        with tempfile.TemporaryDirectory() as tmp:
+            lane_log = Path(tmp) / "t10_run_e2e_tests.log"
+            lane_log.write_text(text, encoding="utf-8")
+            count = self.module.resolve_lane_count("t10_run_e2e_tests.sh", lane_log, Path(tmp))
+        self.assertEqual(count, 26)
+
     def test_landing_unit_total_from_vitest_summary(self):
         #R035-T01: Verify the landing-unit lane parses the vitest Tests summary total, including mixed failed/passed summaries.
         text = " Test Files  2 passed (2)\n      Tests  17 passed (17)\n"

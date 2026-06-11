@@ -2,7 +2,7 @@
 
 #R001: Shared helper resolves the target pointer path.
 src() {
-  printf '%s' "${RUNBOOK_REPO_ROOT}/tests/t03_run_e2e_tests.sh"
+  printf '%s' "${RUNBOOK_REPO_ROOT}/tests/t10_run_e2e_tests.sh"
 }
 
 @test "centralizes umask/strict mode via the shared pointer shim" {

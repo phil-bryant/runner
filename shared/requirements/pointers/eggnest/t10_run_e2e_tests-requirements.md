@@ -1,8 +1,8 @@
-# t03 Run E2E Tests Wrapper Requirements
+# t10 Run E2E Tests Wrapper Requirements
 
 ## Scope
 
-Applies to `tests/t03_run_e2e_tests.sh`.
+Applies to `tests/t10_run_e2e_tests.sh`.
 
 R001  Statement: Pointer runs with secure umask and strict shell mode via the shared shim.
 Design: Source `src/scripts/pointer_shim.sh`, which sets `umask 007` and `set -euo pipefail` before delegation.

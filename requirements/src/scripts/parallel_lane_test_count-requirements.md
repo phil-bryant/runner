@@ -17,10 +17,11 @@ Tests:
 - R005-T01: Verify the shell-unit lane sums multiple bats TAP plan counts.
 
 R010  Statement: Resolve the python-unit lane count from the pytest summary.
-Design: Return `0` for "no tests ran", otherwise sum the outcome counts from the pytest summary line, with a `collected N items` fallback.
+Design: Return `0` for "no tests ran", otherwise sum the outcome counts from the pytest summary line, with a `collected N items` fallback. Generic pytest-based e2e lanes (`*_run_e2e_tests`, excluding the more specific landing-e2e suffix) resolve through the same parser.
 Tests:
 - R010-T01: Verify the python-unit lane parses the pytest passed-summary count.
 - R010-T02: Verify the python-unit lane falls back to `collected N items` when no summary outcome tuple is present.
+- R010-T03: Verify a pytest-based e2e lane resolves its total through the pytest parser, including xfailed/xpassed outcomes.
 
 R022  Statement: Resolve SQL-unit lane counts from pg_prove/TAP output.
 Design: Prefer pg_prove `Tests=N` summary totals, then TAP plan counts, and finally counted `ok` records when summary/plan lines are absent.
