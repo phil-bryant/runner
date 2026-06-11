@@ -1,8 +1,8 @@
-# 04 Run E2E Tests Wrapper Requirements
+# 03 Prepare Supply Chain Integrity Wrapper Requirements
 
 ## Scope
 
-Applies to `04_run_e2e_tests.sh`.
+Applies to `03_prepare_supply_chain_integrity.sh`.
 
 R001  Statement: Pointer runs with secure umask and strict shell mode via the shared shim.
 Design: Source `src/scripts/pointer_shim.sh`, which sets `umask 007` and `set -euo pipefail` before delegation.
@@ -19,7 +19,7 @@ Design: Set `RUNBOOK_PROFILE="eggnest"` so the shim sources `runner/config/runbo
 Tests:
 - R010-T01: Verify the pointer sets `RUNBOOK_PROFILE` to the repo profile.
 
-R015  Statement: Pointer delegates execution to the mapped runner e2e golden.
-Design: Call `delegate_golden "05_run_e2e_tests.sh" "$@"` so the shim execs `${RUNNER_HOME}/05_run_e2e_tests.sh` with arguments passed through unchanged.
+R015  Statement: Pointer delegates execution to the mapped runner supply-chain golden.
+Design: Call `delegate_golden "03_prepare_supply_chain_integrity.sh" "$@"` so the shim execs `${RUNNER_HOME}/03_prepare_supply_chain_integrity.sh` with arguments passed through unchanged.
 Tests:
-- R015-T01: Verify the pointer calls `delegate_golden "05_run_e2e_tests.sh"` with `"$@"`.
+- R015-T01: Verify the pointer calls `delegate_golden "03_prepare_supply_chain_integrity.sh"` with `"$@"`.
