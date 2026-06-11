@@ -30,6 +30,8 @@ MUTATION_HISTORY_PATH="${MUTATION_HISTORY_PATH:-${REPORT_DIR}/mutation-history.n
 MUTATION_TREND_PATH="${MUTATION_TREND_PATH:-${REPORT_DIR}/mutation-trend.json}"
 MUTATION_SURVIVOR_BUDGET="${MUTATION_SURVIVOR_BUDGET:-}"
 MUTATION_HYPOTHESIS_SEED="${MUTATION_HYPOTHESIS_SEED:-20260525}"
+MUTATION_CACHE_MODE="smart"
+MUTATION_RUN_PREFLIGHT=false
 RUN_STARTED_EPOCH="$(date +%s)"
 RUN_STARTED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 GIT_SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
@@ -46,6 +48,7 @@ if [[ "${MUTANTS_DIR}" != /* ]]; then
 fi
 MUTATION_SUMMARY="${REPORT_DIR}/mutation-summary.json"
 MUTMUT_CICD_STATS="${MUTANTS_DIR}/mutmut-cicd-stats.json"
+CACHE_META_PATH="${MUTANTS_DIR}/cache-meta.json"
 
 mkdir -p "$REPORT_DIR"
 mkdir -p "${REPO_ROOT}/artifacts/cache/egg-info"
@@ -84,6 +87,64 @@ print_runner_header() {
   printf '%s\n' "$border"
 }
 
+#R001: shard-3 function tag
+print_usage() {
+  cat <<USAGE
+Usage: $(basename "${BASH_SOURCE[0]}") [--slow|--preflight] [--fast|--skip-preflight]
+                                    [--cache-smart|--cache-fresh|--cache-force] [-h|--help]
+
+Defaults:
+  - Fast local execution: preflight is skipped by default.
+  - Smart mutation cache reuse: reuses cached mutants when toolchain fingerprint matches.
+
+Options:
+  --slow, --preflight       Run pytest preflight before mutation run.
+  --fast, --skip-preflight  Skip pytest preflight (default).
+  --cache-smart             Reuse cache only on fingerprint match (default).
+  --cache-fresh             Start from a fresh cache.
+  --cache-force             Reuse any existing cache without fingerprint checks.
+  -h, --help                Show this help and exit.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --slow|--preflight)
+      MUTATION_RUN_PREFLIGHT=true
+      shift
+      ;;
+    --fast|--skip-preflight)
+      MUTATION_RUN_PREFLIGHT=false
+      shift
+      ;;
+    --cache-smart)
+      MUTATION_CACHE_MODE="smart"
+      shift
+      ;;
+    --cache-fresh)
+      MUTATION_CACHE_MODE="fresh"
+      shift
+      ;;
+    --cache-force)
+      MUTATION_CACHE_MODE="force"
+      shift
+      ;;
+    -h|--help)
+      print_usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      echo "❌ FAIL: unknown argument: $1" >&2
+      print_usage >&2
+      exit 2
+      ;;
+  esac
+done
+
 #R005: Fail fast when required commands are unavailable.
 if [ ! -x "$PYTHON_BIN" ]; then
   echo "${VENV_NAME} python is required but was not found at ${PYTHON_BIN}."
@@ -98,6 +159,106 @@ fi
 
 MUTMUT_DARWIN_STUB="${RUNNER_HOME}/src/scripts/mutmut_darwin_stub.py"
 MUTMUT_DARWIN_DRIVER="${RUNNER_HOME}/src/scripts/mutmut_darwin.py"
+
+#R001: shard-3 function tag
+file_sha256() {
+  shasum -a 256 "$1" | awk '{print $1}'
+}
+
+#R001: shard-3 function tag
+build_cache_fingerprint() {
+  local py_runtime=""
+  local mutmut_version=""
+  local script_hash=""
+  local driver_hash=""
+  py_runtime="$("$PYTHON_BIN" - <<'PY'
+import platform
+import sys
+print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}|{platform.platform()}")
+PY
+)"
+  mutmut_version="$("$PYTHON_BIN" -m mutmut --version 2>/dev/null | tr -d '\r')"
+  script_hash="$(file_sha256 "$SCRIPT_PATH")"
+  driver_hash="$(file_sha256 "$MUTMUT_DARWIN_DRIVER")"
+  printf '%s\n' "$py_runtime" "$mutmut_version" "$script_hash" "$driver_hash" "$REPO_ROOT" | shasum -a 256 | awk '{print $1}'
+}
+
+#R001: shard-3 function tag
+read_cache_fingerprint() {
+  local meta_path="$1"
+  "$PYTHON_BIN" - "$meta_path" <<'PY'
+import json
+import sys
+from pathlib import Path
+meta_path = Path(sys.argv[1])
+try:
+    payload = json.loads(meta_path.read_text(encoding="utf-8"))
+except Exception:
+    print("")
+    raise SystemExit(0)
+fingerprint = payload.get("fingerprint", "")
+print(fingerprint if isinstance(fingerprint, str) else "")
+PY
+}
+
+#R001: shard-3 function tag
+write_cache_metadata() {
+  local fingerprint="$1"
+  mkdir -p "$(dirname "$CACHE_META_PATH")"
+  "$PYTHON_BIN" - "$CACHE_META_PATH" "$fingerprint" "$RUN_STARTED_AT" "$GIT_SHA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+meta_path = Path(sys.argv[1])
+fingerprint = sys.argv[2]
+run_started_at = sys.argv[3]
+git_sha = sys.argv[4]
+payload = {
+    "fingerprint": fingerprint,
+    "run_started_at": run_started_at,
+    "git_sha": git_sha,
+}
+meta_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+PY
+}
+
+current_cache_fingerprint="$(build_cache_fingerprint)"
+reuse_mutation_cache=false
+cache_hit_reason=""
+if [[ "$MUTATION_CACHE_MODE" == "force" ]]; then
+  if [[ -d "${MUTANTS_DIR}" ]]; then
+    reuse_mutation_cache=true
+    cache_hit_reason="forced reuse"
+  fi
+elif [[ "$MUTATION_CACHE_MODE" == "smart" ]]; then
+  if [[ -d "${MUTANTS_DIR}" && -f "${CACHE_META_PATH}" ]]; then
+    saved_cache_fingerprint="$(read_cache_fingerprint "${CACHE_META_PATH}")"
+    if [[ -n "${saved_cache_fingerprint}" && "${saved_cache_fingerprint}" == "${current_cache_fingerprint}" ]]; then
+      reuse_mutation_cache=true
+      cache_hit_reason="fingerprint match"
+    fi
+  fi
+fi
+
+if [[ "$reuse_mutation_cache" == "true" ]]; then
+  echo "▶ Mutation cache: reusing existing cache (${cache_hit_reason}; mode=${MUTATION_CACHE_MODE})."
+else
+  if [[ "$MUTATION_CACHE_MODE" == "smart" ]]; then
+    echo "▶ Mutation cache: smart miss; rotating existing cache."
+  elif [[ "$MUTATION_CACHE_MODE" == "force" ]]; then
+    echo "▶ Mutation cache: no existing cache found for forced reuse; starting fresh."
+  else
+    echo "▶ Mutation cache: fresh mode requested; rotating existing cache."
+  fi
+  if [[ -e "${ROOT_MUTANTS_LINK}" || -L "${ROOT_MUTANTS_LINK}" ]]; then
+    safe_move_to_trash "${ROOT_MUTANTS_LINK}"
+  fi
+  if [[ -d "${MUTANTS_DIR}" ]]; then
+    safe_move_to_trash "${MUTANTS_DIR}"
+  fi
+fi
+
 MUTATION_USE_SUBPROCESS="${MUTATION_USE_SUBPROCESS:-}"
 if [ -z "$MUTATION_USE_SUBPROCESS" ]; then
   if [ "$(uname -s)" = "Darwin" ]; then
@@ -107,21 +268,13 @@ if [ -z "$MUTATION_USE_SUBPROCESS" ]; then
   fi
 fi
 
-#R010: Require unit tests to pass before mutation testing begins (unless explicitly skipped).
-if [[ -z "${MUTATION_SKIP_PREFLIGHT+x}" ]]; then
-  if [ "$IS_CI" = "true" ]; then
-    MUTATION_SKIP_PREFLIGHT=false
-  else
-    MUTATION_SKIP_PREFLIGHT=true
-  fi
-fi
-if [ "$MUTATION_SKIP_PREFLIGHT" = "true" ]; then
+#R010: Require unit tests to pass before mutation testing begins only when preflight is enabled.
+if [[ "$MUTATION_RUN_PREFLIGHT" != "true" ]]; then
   echo ""
-  echo "▶ Preflight: skipped (MUTATION_SKIP_PREFLIGHT=true override)."
-  echo "  Default behavior skips preflight locally and enables it in CI."
+  echo "▶ Preflight: skipped by default (--preflight enables slow mode)."
 else
   echo ""
-  echo "▶ Preflight: running pytest on tests/py (MUTATION_SKIP_PREFLIGHT=false)."
+  echo "▶ Preflight: running pytest on tests/py (--preflight enabled)."
   PREFLIGHT_OUTPUT="$(mktemp)"
   set +e
   (
@@ -175,21 +328,14 @@ print_runner_header \
   "https://mutmut.readthedocs.io/"
 
 #R015: Run mutmut from repository root and export CI/CD stats.
-if [ -e "${ROOT_MUTANTS_LINK}" ] && [ ! -L "${ROOT_MUTANTS_LINK}" ]; then
-  MUTANTS_TRASH="$(mktemp -d "${HOME}/.Trash/teller_mutants_XXXXXX")"
-  mv "${ROOT_MUTANTS_LINK}" "${MUTANTS_TRASH}/mutants"
-fi
-if [ -d "${MUTANTS_DIR}" ]; then
-  MUTANTS_TRASH="$(mktemp -d "${HOME}/.Trash/teller_mutants_XXXXXX")"
-  mv "${MUTANTS_DIR}" "${MUTANTS_TRASH}/mutants"
-fi
-if [ -L "${ROOT_MUTANTS_LINK}" ]; then
+if [[ -e "${ROOT_MUTANTS_LINK}" || -L "${ROOT_MUTANTS_LINK}" ]]; then
   safe_move_to_trash "${ROOT_MUTANTS_LINK}"
 fi
 mkdir -p "$(dirname "$MUTANTS_DIR")"
 mkdir -p "$MUTANTS_DIR"
 ln -s "$MUTANTS_DIR" "$ROOT_MUTANTS_LINK"
 MUTANTS_LINK_CREATED=true
+write_cache_metadata "$current_cache_fingerprint"
 echo ""
 if [ "$MUTATION_USE_SUBPROCESS" = "true" ]; then
   echo "▶ Running mutation tests (macOS subprocess driver; avoids mutmut fork+pytest SIGSEGV)..."

@@ -238,12 +238,28 @@ def _full_suite_tests(root: Path) -> list[str]:
     return [str(py_dir)] if py_dir.is_dir() else []
 
 
+def _active_mutant_name(root: Path, mutant_name: str) -> str:
+    #R050: Map mutant module names to runtime imports used by target tests.
+    module_name, separator, mutant_key = mutant_name.rpartition(".")
+    if not separator:
+        return mutant_name
+    scripts_init = root / "scripts" / "__init__.py"
+    if module_name.startswith("scripts.") and not scripts_init.is_file():
+        # Mutated script modules are often imported as top-level names (e.g. `import graph_token`).
+        # mutmut keys use `scripts.<module>.<mutant>`; strip the `scripts.` prefix for trampoline matching.
+        return f"{module_name.split('.', 1)[1]}.{mutant_key}"
+    return mutant_name
+
+
 def _run_mutant_pytest(python: Path, root: Path, mutant_name: str, tests: list[str]) -> int:
     #R045: Compose deterministic subprocess pytest environment per mutant.
     # Derive the venv from the resolved interpreter (venv/bin/python3) so the driver is repo-agnostic.
     venv = python.parent.parent
     env = os.environ.copy()
-    env["MUTANT_UNDER_TEST"] = mutant_name
+    active_mutant_name = _active_mutant_name(root, mutant_name)
+    env["MUTANT_UNDER_TEST"] = active_mutant_name
+    if active_mutant_name != mutant_name:
+        env["MUTANT_UNDER_TEST_ORIGINAL"] = mutant_name
     mutants_src = root / "mutants" / "src"
     repo_src = root / "src"
     if mutants_src.is_dir():
