@@ -29,6 +29,9 @@ ALLOWED_SCOPE_FILE_EXTS = {
     "mm",
     "h",
     "hpp",
+    "ts",
+    "astro",
+    "mjs",
 }
 ALLOWED_SCOPE_FILENAMES = {"Makefile", ".gitignore"}
 

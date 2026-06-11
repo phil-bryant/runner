@@ -60,6 +60,21 @@ Tests:
 - R025-T01: Verify the static security lane counts discovered tool artifacts from the report path declared in the log.
 - R025-T02: Verify security-lane count falls back to default artifacts path when the log omits a `Reports:` declaration.
 
+R035  Statement: Resolve landing-unit lane counts from the vitest summary.
+Design: Parse the most recent vitest `Tests ... (N)` summary line and return the parenthesized grand total.
+Tests:
+- R035-T01: Verify the landing-unit lane parses the vitest Tests summary total, including mixed failed/passed summaries.
+
+R040  Statement: Resolve landing-e2e lane counts from playwright outcome lines.
+Design: Sum the final playwright `N passed`/`N failed`/`N flaky`/`N skipped` outcome lines.
+Tests:
+- R040-T01: Verify the landing-e2e lane sums playwright outcome line counts.
+
+R045  Statement: Resolve landing-typecheck lane counts from the astro-check result.
+Design: Parse the astro-check `Result (N files)` line and return the checked-file count.
+Tests:
+- R045-T01: Verify the landing-typecheck lane parses the astro-check Result files count.
+
 R030  Statement: Emit a safe single-test fallback for unknown or uncountable lanes.
 Design: Print `1` when the lane is unknown or yields a `None`/negative count, otherwise print the resolved count.
 Tests:

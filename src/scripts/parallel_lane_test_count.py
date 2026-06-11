@@ -200,6 +200,36 @@ def _parse_cpp_integration_total(log_text: str) -> int | None:
     return None
 
 
+#R035: Vitest lanes report a `Tests ... (N)` summary line; use the
+# parenthesized grand total from the most recent summary.
+def _parse_vitest_total(log_text: str) -> int | None:
+    #R035: Parse vitest lane totals from the Tests summary line.
+    matches = re.findall(r"(?m)^\s*Tests\s+[^\n(]*\((\d+)\)\s*$", log_text)
+    if matches:
+        return int(matches[-1])
+    return None
+
+
+#R040: Playwright lanes report final `N passed` / `N failed` outcome lines;
+# sum the matched outcome counts.
+def _parse_playwright_total(log_text: str) -> int | None:
+    #R040: Parse playwright lane totals from final outcome lines.
+    counts = re.findall(r"(?m)^\s*(\d+)\s+(?:passed|failed|flaky|skipped)\b", log_text)
+    if counts:
+        return sum(int(count) for count in counts)
+    return None
+
+
+#R045: Astro-check (typecheck) lanes report `Result (N files)`; use the
+# checked-file count as the lane total.
+def _parse_astro_check_total(log_text: str) -> int | None:
+    #R045: Parse astro-check lane totals from the Result files count.
+    match = re.search(r"(?im)\bResult\s*\((\d+)\s+files?\)", log_text)
+    if match:
+        return int(match.group(1))
+    return None
+
+
 def _parse_numeric_selector_count(selector: str) -> int | None:
     #R018: Parse numeric selector syntax into unique scenario counts.
     selector = selector.strip()
@@ -278,6 +308,9 @@ def _resolve_log_parsed_lane_count(lane_stem: str, log_text: str, repo_root: Pat
         ("run_swift_unit_tests", lambda: _parse_swift_xctest_total(log_text)),
         ("run_macos_ui_regression_tests", lambda: _parse_macos_ui_regression_total(log_text, repo_root)),
         ("run_cpp_integration_tests", lambda: _parse_cpp_integration_total(log_text)),
+        ("run_landing_unit_tests", lambda: _parse_vitest_total(log_text)),
+        ("run_landing_e2e_tests", lambda: _parse_playwright_total(log_text)),
+        ("run_landing_typecheck_tests", lambda: _parse_astro_check_total(log_text)),
     )
     for suffix, parser in lane_parsers:
         if lane_stem.endswith(suffix):
@@ -358,6 +391,9 @@ def resolve_lane_count(lane_script: str, lane_log: Path, repo_root: Path) -> int
     #R020: Resolve quality lane totals from non-skipped sub-check reports.
     #R025: Resolve security lane totals from discovered report artifacts.
     #R030: Support unknown-lane fallback handling via shared resolver contract.
+    #R035: Resolve landing-unit totals from the vitest Tests summary.
+    #R040: Resolve landing-e2e totals from playwright outcome lines.
+    #R045: Resolve landing-typecheck totals from the astro-check Result line.
     lane_stem = Path(lane_script).stem
     log_text = _read_text(lane_log)
 

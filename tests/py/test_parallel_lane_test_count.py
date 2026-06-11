@@ -50,6 +50,26 @@ class ParallelLaneTestCountTests(unittest.TestCase):
         text = "Executed 12 tests, with 0 failures in 0.123 seconds"
         self.assertEqual(self.module._parse_swift_xctest_total(text), 12)
 
+    def test_landing_unit_total_from_vitest_summary(self):
+        #R035-T01: Verify the landing-unit lane parses the vitest Tests summary total, including mixed failed/passed summaries.
+        text = " Test Files  2 passed (2)\n      Tests  17 passed (17)\n"
+        self.assertEqual(self.module._parse_vitest_total(text), 17)
+        mixed = "      Tests  1 failed | 16 passed (17)\n"
+        self.assertEqual(self.module._parse_vitest_total(mixed), 17)
+        self.assertIsNone(self.module._parse_vitest_total("no summary here"))
+
+    def test_landing_e2e_total_from_playwright_outcomes(self):
+        #R040-T01: Verify the landing-e2e lane sums playwright outcome line counts.
+        text = "  1 failed\n  3 passed (16.3s)\n"
+        self.assertEqual(self.module._parse_playwright_total(text), 4)
+        self.assertIsNone(self.module._parse_playwright_total("nothing to see"))
+
+    def test_landing_typecheck_total_from_astro_check_result(self):
+        #R045-T01: Verify the landing-typecheck lane parses the astro-check Result files count.
+        text = "Result (14 files): \n- 0 errors\n- 0 warnings\n"
+        self.assertEqual(self.module._parse_astro_check_total(text), 14)
+        self.assertIsNone(self.module._parse_astro_check_total("no result line"))
+
     #R001: function tag for test_cpp_integration_total_from_ctest_summary
     def test_cpp_integration_total_from_ctest_summary(self):
         # Verify C++ integration lane count is parsed from ctest summary output.

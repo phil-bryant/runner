@@ -6,7 +6,7 @@ from pathlib import Path
 from .parsing import extract_source_files_from_requirements
 
 
-ALLOWED_SOURCE_EXTS = {".sh", ".py", ".swift", ".sql", ".c", ".cc", ".cpp", ".cxx", ".m", ".mm", ".h", ".hpp"}
+ALLOWED_SOURCE_EXTS = {".sh", ".py", ".swift", ".sql", ".c", ".cc", ".cpp", ".cxx", ".m", ".mm", ".h", ".hpp", ".ts", ".astro", ".mjs"}
 ALLOWED_SOURCE_NAMES = {"Makefile", ".gitignore"}
 
 # The traceability engine itself lives under tests/, which is otherwise excluded
@@ -266,6 +266,11 @@ def list_repository_software_files(repo_root: Path) -> list[str]:
         ".swiftpm",
         "teller-venv",
         ".derivedData-ui-tests",
+        "dist",
+        ".astro",
+        ".wrangler",
+        "test-results",
+        "playwright-report",
     }
     excluded_dir_prefixes = (".derivedData",)
     excluded_relative_paths = {"storage/schema.sql"}
@@ -292,6 +297,9 @@ def list_repository_software_files(repo_root: Path) -> list[str]:
                 if rel in excluded_relative_paths:
                     continue
                 if any(rel.startswith(prefix) for prefix in excluded_relative_prefixes):
+                    continue
+                # TypeScript declaration files are generated/type-only surfaces.
+                if rel.endswith(".d.ts"):
                     continue
                 files.add(rel)
     # Self-coverage: pull the traceability engine's own sources back into the
