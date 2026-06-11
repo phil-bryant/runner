@@ -58,7 +58,7 @@ move_target_to_trash "./artifacts/traceability.latest.log"
 move_target_to_trash "./artifacts/quality"
 move_target_to_trash "./artifacts/quality.latest.log"
 
-#R025: Print a deterministic completion summary and keep missing targets non-fatal.
+#R025: Print a deterministic completion summary and keep absent targets non-fatal.
 if [[ "$MOVED_COUNT" -eq 0 ]]; then
   echo "ℹ️  No generated artifacts found to clean."
   echo "Checked targets: security/fuzz, coverage, test logs, traceability/quality."
@@ -67,5 +67,5 @@ fi
 
 echo "✅ Cleanup complete: moved ${MOVED_COUNT} target(s) to ${TRASH_RUN_DIR}."
 if [[ "$SKIPPED_COUNT" -gt 0 ]]; then
-  echo "ℹ️  Skipped ${SKIPPED_COUNT} missing target(s)."
+  echo "ℹ️  Skipped ${SKIPPED_COUNT} absent target(s)."
 fi
