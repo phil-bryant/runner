@@ -7,7 +7,7 @@ test orchestrator owned by the runner engine: it resolves the target repo,
 discovers the numbered `tests/tNN_*` check lanes, launches them concurrently
 each in its own session, streams per-lane pass/fail results in completion order,
 gates the overall run. The runner self-run
-(11_run_all_self_tests_parallel) and the consuming repos delegate to this
+(08_run_all_self_tests_parallel) and the consuming repos delegate to this
 golden, but its behavioral source/test traceability is enforced here against the
 first-party in-repo implementation.
 

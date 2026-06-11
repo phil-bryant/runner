@@ -79,7 +79,7 @@ done
 # of the orchestrator is unchanged. Default (false) preserves the historical tests/tNN behavior exactly.
 PARALLEL_CHECKS_RUNNERS_MODE="${PARALLEL_CHECKS_RUNNERS_MODE:-false}"
 # Shallow, executable-only, NN_-anchored; the *tests_parallel family also catches runner's
-# 11_run_all_self_tests_parallel.sh self-run pointer.
+# 08_run_all_self_tests_parallel.sh self-run pointer.
 RUNNERS_DISCOVERY_GLOB="${RUNNERS_DISCOVERY_GLOB:-[0-9][0-9]_run_all_*tests_parallel.sh}"
 RUNNERS_DISCOVERY_MAXDEPTH="${RUNNERS_DISCOVERY_MAXDEPTH:-2}"
 
@@ -109,7 +109,7 @@ CHECKS=()
 if [[ "$PARALLEL_CHECKS_RUNNERS_MODE" == "true" ]]; then
   #R011: One canonical run-all pointer per repo root (root + immediate subrepos). The SELF_SCRIPT_BASENAME
   # guard drops the golden engine itself (runner/07_run_all_tests_parallel.sh shares this basename),
-  # leaving runner represented by its 11_run_all_self_tests_parallel.sh self-run pointer.
+  # leaving runner represented by its 08_run_all_self_tests_parallel.sh self-run pointer.
   while IFS= read -r candidate; do
     [[ -n "$candidate" ]] || continue
     rel="${candidate#./}"

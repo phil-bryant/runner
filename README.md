@@ -11,7 +11,7 @@ For the design (dual-root model, layering, data flow) see [`Architecture.md`](Ar
 CI is **implemented but intentionally disabled for automatic runs** until the `v1.0` customer release. A GitHub
 Actions workflow exists at `.github/workflows/ci.yml`, but it is **manual-dispatch-only**
 (`on: workflow_dispatch`) — it does **not** trigger on `push`, `pull_request`, or `schedule`. Pre-release, the
-enforcement mechanism is the local numbered lanes (`tests/tNN_*.sh` + `./11_run_all_self_tests_parallel.sh`),
+enforcement mechanism is the local numbered lanes (`tests/tNN_*.sh` + `./08_run_all_self_tests_parallel.sh`),
 not GitHub-hosted CI: this is a solo project and red X's on every push are noise rather than signal. The
 workflow runs the engine's Linux-portable self-run subset against `runner` itself (requirements traceability
 `t04` + shell unit `t05` (shellcheck + Bats over the shared goldens, optional kcov runtime coverage) + Python unit `t06`); the AV (`t01`),
@@ -68,14 +68,14 @@ dependency freshness, static security, requirements traceability, and shell unit
 ```bash
 cd runner
 ./02_create_venv.sh && source runner-venv/bin/activate && ./04_load_requirements.sh && deactivate
-./11_run_all_self_tests_parallel.sh   # 5 self lanes against runner, all green
+./08_run_all_self_tests_parallel.sh   # 5 self lanes against runner, all green
 # optional shell runtime coverage for t05
 RUN_SHELL_COVERAGE=true ./tests/t05_run_shell_unit_tests.sh
 ```
 
 The load-requirements step bootstraps a hash-pinned secure `pip` (`26.1.2`) before self-tests run. If `t03` ever
 fails with `pip-audit` findings on `pip` itself, reactivate `runner-venv` and rerun `./04_load_requirements.sh`
-(or recreate the venv with `./02_create_venv.sh`) before running `./11_run_all_self_tests_parallel.sh` again.
+(or recreate the venv with `./02_create_venv.sh`) before running `./08_run_all_self_tests_parallel.sh` again.
 
 When `RUN_SHELL_COVERAGE=true`, the shell lane first runs normal Bats gating, then runs a per-file `kcov` pass and
 writes reports under `artifacts/coverage/shell/`. Coverage collection is best-effort by default
@@ -83,7 +83,7 @@ writes reports under `artifacts/coverage/shell/`. Coverage collection is best-ef
 `SHELL_COVERAGE_STRICT=true` to make coverage-collection failures fatal and tune per-file runtime with
 `SHELL_COVERAGE_TIMEOUT_SECONDS` (default `120`).
 
-`11_run_all_self_tests_parallel.sh` sets `RUNBOOK_REPO_ROOT` to runner, sources `config/runbook/runner.env`, and execs the
+`08_run_all_self_tests_parallel.sh` sets `RUNBOOK_REPO_ROOT` to runner, sources `config/runbook/runner.env`, and execs the
 golden `07_run_all_tests_parallel.sh`. The orchestrator discovers runner's own `tests/tNN_*.sh` goldens and runs only the
 lanes named in `RUN_LANE_ALLOWLIST` (`t01` AV, `t02` dependency freshness, `t03` static security, `t04` requirements
 traceability, `t05` shell unit). The heavier DB/UI/DAST lanes are intentionally not part of the self-run. There are no
@@ -213,7 +213,7 @@ A test runner that nobody tests is just unverified infrastructure. Runner takes 
 the thing that runs the tests — we don't only run lanes, we prove the lane engine and its delegation contracts
 are sound.
 
-- **The engine runs green against itself (dogfooding).** `11_run_all_self_tests_parallel.sh` sets
+- **The engine runs green against itself (dogfooding).** `08_run_all_self_tests_parallel.sh` sets
   `RUNBOOK_REPO_ROOT` to runner, sources `config/runbook/runner.env`, and execs the golden
   `07_run_all_tests_parallel.sh` over runner's own `tests/tNN_*.sh`. It runs only the lanes that make sense for
   the engine itself — the `RUN_LANE_ALLOWLIST` subset `t01` (AV), `t02` (dependency freshness), `t03` (static
@@ -262,6 +262,17 @@ now holds itself to the exact standard it enforces on everything else: it traces
 The meta-point is the whole point: a traceability engine that exempts itself is asking for trust it hasn't
 earned. This one earns it by passing its own gate — same scoped tags, same mandatory text, same coverage rule,
 no exemptions.
+
+## Cleaning generated artifacts
+
+When you want to clear generated reports/logs between runs, use:
+
+```bash
+./96_clean_generated_files.sh
+```
+
+This moves generated outputs to `~/.Trash` (no destructive delete), including security/fuzzing reports,
+coverage reports, parallel test-run logs, and traceability/quality logs.
 
 ## Constraints
 

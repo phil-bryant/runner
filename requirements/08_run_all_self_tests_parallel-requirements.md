@@ -1,8 +1,8 @@
-# 11 run all self tests parallel Pointer Requirements
+# 08 run all self tests parallel Pointer Requirements
 
 ## Scope
 
-Applies to `11_run_all_self_tests_parallel.sh`, the runner self-run entrypoint.
+Applies to `08_run_all_self_tests_parallel.sh`, the runner self-run entrypoint.
 It is a **thin pointer**: it sources the shared shim, selects the "runner"
 runbook profile, and delegates to the parallel-orchestrator golden
 07_run_all_tests_parallel.sh. The orchestrator's behavior is specified and

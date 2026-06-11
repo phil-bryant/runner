@@ -29,7 +29,7 @@ isProject: false
 # Closure detection rework (ast + tree-sitter)
 
 ## Out of scope - do not touch (parallel runner)
-Recent committed work added the parallel-runner improvements; this plan must not modify or revert them: [07_run_all_tests_parallel.sh](07_run_all_tests_parallel.sh), [11_run_all_self_tests_parallel.sh](11_run_all_self_tests_parallel.sh), [src/scripts/parallel_lane_test_count.py](src/scripts/parallel_lane_test_count.py), and their bats/requirements. The only shared files this plan edits are [requirements.in](requirements.in), the generated [requirements.txt](requirements.txt), and [03_prepare_supply_chain_integrity.sh](03_prepare_supply_chain_integrity.sh) (Phase 2 dependency wiring) - changes there must be purely additive (new tree-sitter entries / a new dev lockfile), leaving parallel-runner logic intact.
+Recent committed work added the parallel-runner improvements; this plan must not modify or revert them: [07_run_all_tests_parallel.sh](07_run_all_tests_parallel.sh), [08_run_all_self_tests_parallel.sh](08_run_all_self_tests_parallel.sh), [src/scripts/parallel_lane_test_count.py](src/scripts/parallel_lane_test_count.py), and their bats/requirements. The only shared files this plan edits are [requirements.in](requirements.in), the generated [requirements.txt](requirements.txt), and [03_prepare_supply_chain_integrity.sh](03_prepare_supply_chain_integrity.sh) (Phase 2 dependency wiring) - changes there must be purely additive (new tree-sitter entries / a new dev lockfile), leaving parallel-runner logic intact.
 
 ## Goal
 

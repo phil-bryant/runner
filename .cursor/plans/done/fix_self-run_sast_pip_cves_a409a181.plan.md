@@ -30,7 +30,7 @@ isProject: false
 ## Key code facts to preserve
 - The static lane currently runs `pip-audit` against the project interpreter and immediately gates results ([`src/scripts/security/run_static_security_lane.sh`](src/scripts/security/run_static_security_lane.sh)).
 - Runner self-run profile currently contains contradictory bootstrap knobs (`LOAD_REQUIREMENTS_BOOTSTRAP_PIP="false"` while pinning `BOOTSTRAP_PIP_VERSION="26.1.2"`) in [`config/runbook/runner.env`](config/runbook/runner.env).
-- README self-run flow explicitly expects dependency loading before `11_run_all_self_tests_parallel.sh` ([`README.md`](README.md)).
+- README self-run flow explicitly expects dependency loading before `08_run_all_self_tests_parallel.sh` ([`README.md`](README.md)).
 
 ## Implementation plan
 1. **Add secure pip bootstrap in static lane (non-suppressive fix)**
@@ -52,5 +52,5 @@ isProject: false
 
 ## Validation after changes
 - Run `./tests/t03_run_static_security_tests.sh` and verify `gate_failed: false` in `artifacts/security/reports/sast-summary.json` with no medium+ findings from pip baseline.
-- Run `./11_run_all_self_tests_parallel.sh` and verify all 5 self lanes pass.
+- Run `./08_run_all_self_tests_parallel.sh` and verify all 5 self lanes pass.
 - Confirm no gate policy variables were weakened and no scanner suppressions were introduced.

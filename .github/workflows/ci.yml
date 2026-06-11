@@ -57,7 +57,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y bats shellcheck
 
       # Source the runner self-run profile so the lanes use the engine's own
-      # relaxed/self-scoped knobs (mirrors 11_run_all_self_tests_parallel.sh).
+      # relaxed/self-scoped knobs (mirrors 08_run_all_self_tests_parallel.sh).
       - name: Create venv and load requirements
         run: |
           export RUNBOOK_REPO_ROOT="$PWD"
