@@ -2,7 +2,7 @@
 
 #R001: shard-3 function tag
 src() {
-  printf '%s' "${RUNBOOK_REPO_ROOT}/01_create_venv.sh"
+  printf '%s' "${RUNBOOK_REPO_ROOT}/02_create_venv.sh"
 }
 
 @test "centralizes umask/strict mode via the shared pointer shim" {
