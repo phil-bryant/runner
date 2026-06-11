@@ -156,3 +156,9 @@ setup() {
   grep -q '\.parallel-ui-tests\.lock' "$SCRIPT"
   grep -q 'PARALLEL_UI_LOCK_WAIT_TIMEOUT_SECONDS' "$SCRIPT"
 }
+
+@test "bounds UI lane runtime and logs lock wait owner" {
+  #R066-T02: UI lanes have a runtime watchdog and emit lock-owner wait diagnostics while blocked.
+  grep -q 'PARALLEL_UI_LANE_RUNTIME_TIMEOUT_SECONDS' "$SCRIPT"
+  grep -q 'Waiting for macOS UI lane lock (owner pid' "$SCRIPT"
+}

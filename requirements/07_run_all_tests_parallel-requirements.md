@@ -103,6 +103,7 @@ R066  Statement: Serialize macOS UI regression lanes through a single RUNNER_HOM
 Design: In the lane worker, gate any lane whose name matches `UI_REGRESSION_PATTERN` behind a pid-aware mkdir lock at `${UI_LANE_LOCK_DIR:-${SCRIPT_DIR}/.parallel-ui-tests.lock}`; because `SCRIPT_DIR` is `RUNNER_HOME` and every repo's pointer execs this same golden, the lock is shared across repos so concurrent UI lanes (e.g. classy and mailcart under the runners-mode meta-run) wait instead of fighting the SwiftPM build and window-server focus. Reclaim only a dead owner's lock (`kill -0`) and bound the wait with `PARALLEL_UI_LOCK_WAIT_TIMEOUT_SECONDS`; perform no unconditional startup cleanup so concurrent goldens cannot stomp a held lock.
 Tests:
 - R066-T01: Verify the worker gates `UI_REGRESSION_PATTERN` lanes behind the `.parallel-ui-tests.lock` with a pid-aware, bounded wait.
+- R066-T02: Verify UI lanes enforce `PARALLEL_UI_LANE_RUNTIME_TIMEOUT_SECONDS` and log lock-owner wait diagnostics while blocked.
 
 ## Changelog
 

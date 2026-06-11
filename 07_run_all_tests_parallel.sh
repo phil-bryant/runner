@@ -617,6 +617,48 @@ run_lane_worker() {
     fi
   }
 
+  #R066: Terminate a timed-out UI lane process tree deterministically.
+  terminate_lane_process_tree() {
+    local signal="$1"
+    local target_pid="$2"
+    local child_pid=""
+    [[ -n "$target_pid" ]] || return 0
+    for child_pid in $(pgrep -P "$target_pid" 2>/dev/null || true); do
+      terminate_lane_process_tree "$signal" "$child_pid"
+    done
+    kill -"$signal" "$target_pid" 2>/dev/null || true
+  }
+
+  #R066: Enforce a bounded runtime for locked UI regression lanes.
+  run_lane_with_runtime_timeout() {
+    local runtime_timeout_seconds="$1"
+    local lane_pid=0
+    local lane_started_at=0
+    local lane_now=0
+    if [[ ! "$runtime_timeout_seconds" =~ ^[0-9]+$ || "$runtime_timeout_seconds" -le 0 ]]; then
+      run_lane
+      return $?
+    fi
+    run_lane &
+    lane_pid=$!
+    lane_started_at="$(date +%s)"
+    while kill -0 "$lane_pid" 2>/dev/null; do
+      lane_now="$(date +%s)"
+      if (( lane_now - lane_started_at >= runtime_timeout_seconds )); then
+        printf '%s\n' "❌ Timed out after ${runtime_timeout_seconds}s while running ${script}." >>"$log"
+        printf '%s signal=TERM reason=lane-runtime-timeout pid=%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$lane_pid" >> "${log}.cleanup"
+        terminate_lane_process_tree TERM "$lane_pid"
+        sleep 1
+        terminate_lane_process_tree KILL "$lane_pid"
+        wait "$lane_pid" 2>/dev/null || true
+        return 124
+      fi
+      sleep 1
+    done
+    wait "$lane_pid"
+    return $?
+  }
+
   if [[ "$script" == *deploy_database_verification_test.sh || "$script" == *run_sql_unit_tests.sh || "$script" == *classification_persistence_verification_test.sh || "$script" == *run_dynamic_security_tests.sh ]]; then
     local lock_wait_timeout="${PARALLEL_DB_LOCK_WAIT_TIMEOUT_SECONDS:-600}"
     local lock_wait_start
@@ -654,8 +696,10 @@ run_lane_worker() {
     # unconditional startup cleanup (concurrent goldens would stomp a held lock); reclaim only on a
     # dead owner so simultaneous classy/mailcart UI lanes wait instead of fighting the window server.
     local ui_lock_timeout="${PARALLEL_UI_LOCK_WAIT_TIMEOUT_SECONDS:-1800}"
-    local ui_lock_start ui_now ui_owner
+    local ui_lane_runtime_timeout="${PARALLEL_UI_LANE_RUNTIME_TIMEOUT_SECONDS:-900}"
+    local ui_lock_start ui_now ui_owner ui_wait_notice_epoch
     ui_lock_start="$(date +%s)"
+    ui_wait_notice_epoch=0
     while ! mkdir "$ui_lock_dir" 2>/dev/null; do
       ui_owner=""
       if [[ -f "${ui_lock_dir}/pid" ]]; then
@@ -669,8 +713,12 @@ run_lane_worker() {
         continue
       fi
       ui_now="$(date +%s)"
+      if (( ui_wait_notice_epoch == 0 || ui_now - ui_wait_notice_epoch >= 60 )); then
+        printf '%s\n' "ℹ️ Waiting for macOS UI lane lock (owner pid ${ui_owner:-unknown})..." >>"$log"
+        ui_wait_notice_epoch="$ui_now"
+      fi
       if (( ui_now - ui_lock_start >= ui_lock_timeout )); then
-        printf '%s\n' "❌ FAIL: timed out waiting for macOS UI lane lock (${ui_lock_timeout}s)." >"$log"
+        printf '%s\n' "❌ FAIL: timed out waiting for macOS UI lane lock (${ui_lock_timeout}s)." >>"$log"
         exit_code=1
         break
       fi
@@ -678,7 +726,7 @@ run_lane_worker() {
     done
     if [[ "$exit_code" -eq 0 ]]; then
       echo "${BASHPID:-$$}" > "${ui_lock_dir}/pid" 2>/dev/null || true
-      run_lane
+      run_lane_with_runtime_timeout "$ui_lane_runtime_timeout"
       exit_code=$?
       rm -rf "$ui_lock_dir" 2>/dev/null || true
     fi
