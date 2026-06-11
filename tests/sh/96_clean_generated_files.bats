@@ -44,10 +44,10 @@ setup() {
   grep -q 'move_target_to_trash "./artifacts/quality.latest.log"' "$SCRIPT"
 }
 
-@test "prints explicit summary and keeps missing targets non-fatal" {
+@test "prints explicit summary and keeps absent targets non-fatal" {
   #R025-T01: source prints no-op/success summary and tracks skipped paths
   grep -q 'No generated artifacts found to clean.' "$SCRIPT"
   grep -q 'Cleanup complete: moved' "$SCRIPT"
-  grep -q 'Skipped .* missing target' "$SCRIPT"
+  grep -q 'Skipped .* absent target' "$SCRIPT"
   grep -q 'SKIPPED_COUNT=\$((SKIPPED_COUNT + 1))' "$SCRIPT"
 }

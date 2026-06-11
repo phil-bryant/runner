@@ -67,5 +67,5 @@ fi
 
 echo "✅ Cleanup complete: moved ${MOVED_COUNT} target(s) to ${TRASH_RUN_DIR}."
 if [[ "$SKIPPED_COUNT" -gt 0 ]]; then
-  echo "ℹ️  Skipped ${SKIPPED_COUNT} missing target(s)."
+  echo "ℹ️  Skipped ${SKIPPED_COUNT} absent target(s)."
 fi

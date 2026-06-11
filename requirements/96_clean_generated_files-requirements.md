@@ -32,10 +32,10 @@ Design: Attempt to move `./artifacts/traceability`, `./artifacts/traceability.la
 Tests:
 - R020-T01: Verify the script targets traceability and quality artifact/log paths for cleanup.
 
-R025  Statement: Missing targets are non-fatal and completion output is explicit.
+R025  Statement: Absent targets are non-fatal and completion output is explicit.
 Design: For absent targets increment skip counters without failure; print a no-op message when nothing is moved, otherwise print moved/skip summary lines including the run-scoped Trash path.
 Tests:
-- R025-T01: Verify the script emits explicit no-op/success summary output and treats missing targets as non-fatal.
+- R025-T01: Verify the script emits explicit no-op/success summary output and treats absent targets as non-fatal.
 
 ## Changelog
 
