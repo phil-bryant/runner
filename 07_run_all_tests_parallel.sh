@@ -251,7 +251,7 @@ fi
 #R050: Runners-mode meta-run and a same-root tNN run (eggnest root hosts both this meta-run and its own
 # 03_ self-run lane) must not share the single-run lock; key the lock name on the mode.
 if [[ "$PARALLEL_CHECKS_RUNNERS_MODE" == "true" ]]; then
-  LOCK_FILE="${RUNBOOK_REPO_ROOT}/.run_all_test_runners.lock"
+  LOCK_FILE="${RUNBOOK_REPO_ROOT}/.06_run_all_test_runners_recursive.lock"
 else
   LOCK_FILE="${RUNBOOK_REPO_ROOT}/.07_run_all_tests_parallel.lock"
 fi

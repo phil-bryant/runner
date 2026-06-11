@@ -157,7 +157,7 @@ selected lanes concurrently. You do not maintain a hardcoded lane list in runner
 
 ## Autodiscovering All Autodiscovering Test Runners
 
-`../run_all_test_runners.sh` is the workspace-level thin pointer that selects the `eggnest-runners` profile and
+`../06_run_all_test_runners_recursive.sh` is the workspace-level thin pointer that selects the `eggnest-runners` profile and
 delegates into `07_run_all_tests_parallel.sh` in runners-discovery mode. In practical terms, it discovers each
 repo's executable `NN_run_all_*tests_parallel.sh` entrypoint and runs those repo-level runners in parallel so
 you can kick off the full workspace test-runner surface with one command.

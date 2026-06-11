@@ -1,8 +1,8 @@
-# Run All Test Runners Wrapper Requirements
+# 06 Run All Test Runners Recursive Wrapper Requirements
 
 ## Scope
 
-Applies to `run_all_test_runners.sh`.
+Applies to `06_run_all_test_runners_recursive.sh`.
 
 R001  Statement: Pointer runs with secure umask and strict shell mode via the shared shim.
 Design: Source `src/scripts/pointer_shim.sh`, which sets `umask 007` and `set -euo pipefail` before delegation.

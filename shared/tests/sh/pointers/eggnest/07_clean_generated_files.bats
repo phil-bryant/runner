@@ -2,7 +2,7 @@
 
 #R001: shard-3 function tag
 src() {
-  printf '%s' "${RUNBOOK_REPO_ROOT}/run_all_test_runners.sh"
+  printf '%s' "${RUNBOOK_REPO_ROOT}/07_clean_generated_files.sh"
 }
 
 @test "centralizes umask/strict mode via the shared pointer shim" {
@@ -17,14 +17,14 @@ src() {
   [ "$status" -eq 0 ]
 }
 
-@test "selects the runners meta-run profile explicitly before delegation" {
-  #R010-T01: Verify the pointer calls select_runbook_profile "eggnest-runners".
-  run grep 'select_runbook_profile "eggnest-runners"' "$(src)"
+@test "selects its runbook profile explicitly before delegation" {
+  #R010-T01: Verify the pointer sets RUNBOOK_PROFILE to the repo profile.
+  run grep "RUNBOOK_PROFILE=\"${RUNBOOK_REPO_NAME}\"" "$(src)"
   [ "$status" -eq 0 ]
 }
 
 @test "delegates to the mapped runner golden" {
-  #R015-T01: Verify the pointer calls delegate_golden "07_run_all_tests_parallel.sh" with "$@".
-  run grep 'delegate_golden "07_run_all_tests_parallel.sh" "$@"' "$(src)"
+  #R015-T01: Verify the pointer calls delegate_golden "96_clean_generated_files.sh" with "$@".
+  run grep 'delegate_golden "96_clean_generated_files.sh" "$@"' "$(src)"
   [ "$status" -eq 0 ]
 }
